@@ -1,0 +1,756 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Core Identity & Validation Primitives
+    // -------------------------------------------------------------------------
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isBootstrapAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'ahmadmagfur1218@gmail.com';
+    }
+
+    function userDocExists(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid));
+    }
+
+    function getUserRole() {
+      return userDocExists(request.auth.uid)
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        : 'Karyawan';
+    }
+
+    function getUserDivisionId() {
+      return userDocExists(request.auth.uid)
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.divisionId
+        : '';
+    }
+
+    function isSuperAdmin() {
+      return isBootstrapAdmin() || (isVerifiedUser() && getUserRole() == 'Super Admin');
+    }
+
+    function isDivisionAdminOf(divisionId) {
+      return isVerifiedUser() && getUserRole() == 'Admin Divisi' && getUserDivisionId() == divisionId;
+    }
+
+    function isAuthor() {
+      return isVerifiedUser() && (getUserRole() == 'Penulis' || getUserRole() == 'Admin Divisi' || isSuperAdmin());
+    }
+
+    function isValidRole(role) {
+      return role in ['Super Admin', 'Admin Divisi', 'Penulis', 'Karyawan'];
+    }
+
+    function isValidSopStatus(status) {
+      return status in ['Draft', 'Review', 'Disetujui', 'Arsip'];
+    }
+
+    function isValidAccessLevel(level) {
+      return level in ['Umum', 'Per Divisi', 'Rahasia'];
+    }
+
+    function isValidFeedback(fb) {
+      return fb in ['none', 'helpful', 'inaccurate', 'outdated'];
+    }
+
+    function isNonEmptyString(val, maxLen) {
+      return val is string && val.size() >= 1 && val.size() <= maxLen;
+    }
+
+    function isBoundedString(val, maxLen) {
+      return val is string && val.size() <= maxLen;
+    }
+
+    function isBoundedStringList(arr, maxLen) {
+      return arr is list && arr.size() <= maxLen && (arr.size() == 0 || arr[0] is string);
+    }
+
+    function isBoundedMapList(arr, maxLen) {
+      return arr is list && arr.size() <= maxLen && (arr.size() == 0 || arr[0] is map);
+    }
+
+    // -------------------------------------------------------------------------
+    // Entity Validation Blueprints
+    // -------------------------------------------------------------------------
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'role', 'divisionId', 'divisionName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'displayName', 'photoURL', 'role', 'divisionId', 'divisionName', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && isNonEmptyString(data.email, 254)
+        && isNonEmptyString(data.displayName, 120)
+        && (!('photoURL' in data) || isBoundedString(data.photoURL, 500))
+        && isValidRole(data.role)
+        && isBoundedString(data.divisionId, 128)
+        && isBoundedString(data.divisionName, 120)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidDirectoryMember(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'role', 'divisionId', 'divisionName', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'role', 'divisionId', 'divisionName', 'updatedAt'])
+        && isValidId(data.uid)
+        && isNonEmptyString(data.displayName, 120)
+        && isValidRole(data.role)
+        && isBoundedString(data.divisionId, 128)
+        && isBoundedString(data.divisionName, 120)
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidDivision(data) {
+      return data.keys().hasAll(['id', 'name', 'code', 'description', 'leadUid', 'leadName', 'suggestedQuestions', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'name', 'code', 'description', 'leadUid', 'leadName', 'suggestedQuestions', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isNonEmptyString(data.name, 120)
+        && isNonEmptyString(data.code, 20)
+        && isBoundedString(data.description, 500)
+        && isBoundedString(data.leadUid, 128)
+        && isBoundedString(data.leadName, 120)
+        && isBoundedStringList(data.suggestedQuestions, 10)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidDepartment(data) {
+      return data.keys().hasAll(['id', 'divisionId', 'divisionName', 'name', 'code', 'description', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'divisionId', 'divisionName', 'name', 'code', 'description', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.divisionId)
+        && isNonEmptyString(data.divisionName, 120)
+        && isNonEmptyString(data.name, 120)
+        && isNonEmptyString(data.code, 20)
+        && isBoundedString(data.description, 500)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSop(data) {
+      return data.keys().hasAll([
+          'id', 'docNumber', 'title', 'divisionId', 'divisionName',
+          'departmentId', 'departmentName', 'purpose', 'scope',
+          'ownerUid', 'ownerName', 'relatedRoles', 'sections', 'attachments',
+          'effectiveDate', 'nextReviewDate', 'status', 'accessLevel',
+          'allowedUserUids', 'viewerUids', 'version',
+          'createdByUid', 'createdByName', 'approvedByUid', 'approvedByName',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'docNumber', 'title', 'divisionId', 'divisionName',
+          'departmentId', 'departmentName', 'purpose', 'scope',
+          'ownerUid', 'ownerName', 'relatedRoles', 'sections', 'attachments',
+          'effectiveDate', 'nextReviewDate', 'status', 'accessLevel',
+          'allowedUserUids', 'viewerUids', 'version',
+          'createdByUid', 'createdByName', 'approvedByUid', 'approvedByName',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isNonEmptyString(data.docNumber, 60)
+        && isNonEmptyString(data.title, 240)
+        && isValidId(data.divisionId)
+        && isNonEmptyString(data.divisionName, 120)
+        && isValidId(data.departmentId)
+        && isNonEmptyString(data.departmentName, 120)
+        && isBoundedString(data.purpose, 4000)
+        && isBoundedString(data.scope, 4000)
+        && isBoundedString(data.ownerUid, 128)
+        && isBoundedString(data.ownerName, 120)
+        && isBoundedStringList(data.relatedRoles, 20)
+        && isBoundedMapList(data.sections, 40)
+        && isBoundedMapList(data.attachments, 20)
+        && isBoundedString(data.effectiveDate, 20)
+        && isBoundedString(data.nextReviewDate, 20)
+        && isValidSopStatus(data.status)
+        && isValidAccessLevel(data.accessLevel)
+        && isBoundedStringList(data.allowedUserUids, 100)
+        && isBoundedStringList(data.viewerUids, 200)
+        && data.version is int && data.version >= 1 && data.version <= 9999
+        && isValidId(data.createdByUid)
+        && isNonEmptyString(data.createdByName, 120)
+        && isBoundedString(data.approvedByUid, 128)
+        && isBoundedString(data.approvedByName, 120)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSopVersion(data) {
+      return data.keys().hasAll([
+          'id', 'sopId', 'version', 'docNumber', 'title', 'purpose', 'scope',
+          'relatedRoles', 'sections', 'attachments', 'effectiveDate', 'nextReviewDate',
+          'status', 'accessLevel', 'createdByUid', 'ownerUid', 'viewerUids',
+          'changeNote', 'editedByUid', 'editedByName', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'sopId', 'version', 'docNumber', 'title', 'purpose', 'scope',
+          'relatedRoles', 'sections', 'attachments', 'effectiveDate', 'nextReviewDate',
+          'status', 'accessLevel', 'createdByUid', 'ownerUid', 'viewerUids',
+          'changeNote', 'editedByUid', 'editedByName', 'createdAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.sopId)
+        && data.version is int && data.version >= 1
+        && isNonEmptyString(data.docNumber, 60)
+        && isNonEmptyString(data.title, 240)
+        && isBoundedString(data.purpose, 4000)
+        && isBoundedString(data.scope, 4000)
+        && isBoundedStringList(data.relatedRoles, 20)
+        && isBoundedMapList(data.sections, 40)
+        && isBoundedMapList(data.attachments, 20)
+        && isBoundedString(data.effectiveDate, 20)
+        && isBoundedString(data.nextReviewDate, 20)
+        && isValidSopStatus(data.status)
+        && isValidAccessLevel(data.accessLevel)
+        && isValidId(data.createdByUid)
+        && isBoundedString(data.ownerUid, 128)
+        && isBoundedStringList(data.viewerUids, 200)
+        && isBoundedString(data.changeNote, 500)
+        && isValidId(data.editedByUid)
+        && isNonEmptyString(data.editedByName, 120)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidSopChunk(data) {
+      return data.keys().hasAll([
+          'id', 'sopId', 'docNumber', 'title', 'version', 'divisionId',
+          'divisionName', 'departmentName', 'sectionIndex', 'sectionTitle',
+          'content', 'keywords', 'embedding', 'status', 'accessLevel',
+          'viewerUids', 'ownerUid', 'ownerName', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'sopId', 'docNumber', 'title', 'version', 'divisionId',
+          'divisionName', 'departmentName', 'sectionIndex', 'sectionTitle',
+          'content', 'keywords', 'embedding', 'status', 'accessLevel',
+          'viewerUids', 'ownerUid', 'ownerName', 'createdAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.sopId)
+        && isNonEmptyString(data.docNumber, 60)
+        && isNonEmptyString(data.title, 240)
+        && data.version is int && data.version >= 1
+        && isValidId(data.divisionId)
+        && isNonEmptyString(data.divisionName, 120)
+        && isNonEmptyString(data.departmentName, 120)
+        && data.sectionIndex is int && data.sectionIndex >= 0
+        && isNonEmptyString(data.sectionTitle, 240)
+        && isNonEmptyString(data.content, 12000)
+        && isBoundedString(data.keywords, 12000)
+        && data.embedding is list && data.embedding.size() <= 4096 && (data.embedding.size() == 0 || data.embedding[0] is number)
+        && data.status == 'Disetujui'
+        && isValidAccessLevel(data.accessLevel)
+        && isBoundedStringList(data.viewerUids, 200)
+        && isBoundedString(data.ownerUid, 128)
+        && isBoundedString(data.ownerName, 120)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidChatSession(data) {
+      return data.keys().hasAll(['id', 'userId', 'userName', 'divisionId', 'title', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'userId', 'userName', 'divisionId', 'title', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.userId)
+        && isNonEmptyString(data.userName, 120)
+        && isBoundedString(data.divisionId, 128)
+        && isNonEmptyString(data.title, 200)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidChatMessage(data) {
+      return data.keys().hasAll([
+          'id', 'sessionId', 'userId', 'role', 'content', 'citations',
+          'hasConflict', 'answered', 'suggestedContact', 'feedback',
+          'feedbackNote', 'logId', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'sessionId', 'userId', 'role', 'content', 'citations',
+          'hasConflict', 'answered', 'suggestedContact', 'feedback',
+          'feedbackNote', 'logId', 'createdAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.sessionId)
+        && isValidId(data.userId)
+        && data.role in ['user', 'assistant']
+        && isNonEmptyString(data.content, 24000)
+        && isBoundedMapList(data.citations, 12)
+        && data.hasConflict is bool
+        && data.answered is bool
+        && isBoundedString(data.suggestedContact, 300)
+        && isValidFeedback(data.feedback)
+        && isBoundedString(data.feedbackNote, 500)
+        && isBoundedString(data.logId, 128)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidQueryLog(data) {
+      return data.keys().hasAll([
+          'id', 'userId', 'userName', 'divisionId', 'divisionName',
+          'question', 'answered', 'matchedSopIds', 'primarySopId',
+          'primarySopTitle', 'primarySopDocNumber', 'feedback',
+          'feedbackNote', 'resolvedAsSopId', 'adminViewerUids',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'userId', 'userName', 'divisionId', 'divisionName',
+          'question', 'answered', 'matchedSopIds', 'primarySopId',
+          'primarySopTitle', 'primarySopDocNumber', 'feedback',
+          'feedbackNote', 'resolvedAsSopId', 'adminViewerUids',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.userId)
+        && isNonEmptyString(data.userName, 120)
+        && isBoundedString(data.divisionId, 128)
+        && isBoundedString(data.divisionName, 120)
+        && isNonEmptyString(data.question, 1000)
+        && data.answered is bool
+        && isBoundedStringList(data.matchedSopIds, 10)
+        && isBoundedString(data.primarySopId, 128)
+        && isBoundedString(data.primarySopTitle, 240)
+        && isBoundedString(data.primarySopDocNumber, 60)
+        && isValidFeedback(data.feedback)
+        && isBoundedString(data.feedbackNote, 500)
+        && isBoundedString(data.resolvedAsSopId, 128)
+        && isBoundedStringList(data.adminViewerUids, 50)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll([
+          'id', 'actorUid', 'actorName', 'action', 'targetType',
+          'targetId', 'targetLabel', 'divisionId', 'detail',
+          'adminViewerUids', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'actorUid', 'actorName', 'action', 'targetType',
+          'targetId', 'targetLabel', 'divisionId', 'detail',
+          'adminViewerUids', 'createdAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.actorUid)
+        && isNonEmptyString(data.actorName, 120)
+        && isNonEmptyString(data.action, 80)
+        && data.targetType in ['SOP', 'USER', 'DIVISION', 'DEPARTMENT']
+        && isValidId(data.targetId)
+        && isBoundedString(data.targetLabel, 240)
+        && isBoundedString(data.divisionId, 128)
+        && isBoundedString(data.detail, 500)
+        && isBoundedStringList(data.adminViewerUids, 50)
+        && data.createdAt is timestamp;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection Rules
+    // -------------------------------------------------------------------------
+
+    // Health-check document (connection verification only)
+    match /test/connection {
+      allow get: if isSignedIn();
+    }
+
+    // Users (PII-isolated: email only visible to self or Super Admin)
+    match /users/{userId} {
+      allow get: if isVerifiedUser() && isValidId(userId) && (request.auth.uid == userId || isSuperAdmin());
+      allow list: if isBootstrapAdmin() || (isVerifiedUser() && resource.data.uid == request.auth.uid);
+
+      allow create: if isVerifiedUser()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUser(incoming())
+        && incoming().uid == request.auth.uid
+        && incoming().email == request.auth.token.email
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          (isBootstrapAdmin() && incoming().role == 'Super Admin')
+          || (!isBootstrapAdmin() && incoming().role == 'Karyawan')
+        );
+
+      allow update: if isVerifiedUser()
+        && isValidId(userId)
+        && isValidUser(incoming())
+        && incoming().uid == existing().uid
+        && incoming().email == existing().email
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isSuperAdmin()
+          || (
+            request.auth.uid == userId
+            && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt'])
+          )
+        );
+    }
+
+    // Non-PII Directory
+    match /directory/{userId} {
+      allow get: if isVerifiedUser() && isValidId(userId);
+      allow list: if isVerifiedUser();
+
+      allow create: if isVerifiedUser()
+        && isValidId(userId)
+        && isValidDirectoryMember(incoming())
+        && incoming().updatedAt == request.time
+        && (
+          isSuperAdmin()
+          || (
+            request.auth.uid == userId
+            && incoming().uid == request.auth.uid
+            && ((isBootstrapAdmin() && incoming().role == 'Super Admin') || incoming().role == 'Karyawan')
+          )
+        );
+
+      allow update: if isVerifiedUser()
+        && isValidId(userId)
+        && isValidDirectoryMember(incoming())
+        && incoming().uid == existing().uid
+        && incoming().updatedAt == request.time
+        && (
+          isSuperAdmin()
+          || (
+            request.auth.uid == userId
+            && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt'])
+          )
+        );
+    }
+
+    // Divisions
+    match /divisions/{divisionId} {
+      allow get: if isVerifiedUser() && isValidId(divisionId);
+      allow list: if isVerifiedUser();
+
+      allow create: if isSuperAdmin()
+        && isValidId(divisionId)
+        && isValidDivision(incoming())
+        && incoming().id == divisionId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isSuperAdmin()
+        && isValidId(divisionId)
+        && isValidDivision(incoming())
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+
+      allow delete: if isSuperAdmin() && isValidId(divisionId);
+    }
+
+    // Departments
+    match /departments/{departmentId} {
+      allow get: if isVerifiedUser() && isValidId(departmentId);
+      allow list: if isVerifiedUser();
+
+      allow create: if isVerifiedUser()
+        && isValidId(departmentId)
+        && isValidDepartment(incoming())
+        && incoming().id == departmentId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/divisions/$(incoming().divisionId))
+        && (isSuperAdmin() || isDivisionAdminOf(incoming().divisionId));
+
+      allow update: if isVerifiedUser()
+        && isValidId(departmentId)
+        && isValidDepartment(incoming())
+        && incoming().id == existing().id
+        && incoming().divisionId == existing().divisionId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (isSuperAdmin() || isDivisionAdminOf(existing().divisionId));
+
+      allow delete: if isVerifiedUser()
+        && isValidId(departmentId)
+        && (isSuperAdmin() || isDivisionAdminOf(existing().divisionId));
+    }
+
+    // SOP Documents
+    match /sops/{sopId} {
+      allow get: if isVerifiedUser() && isValidId(sopId) && (
+        isSuperAdmin()
+        || isDivisionAdminOf(existing().divisionId)
+        || existing().createdByUid == request.auth.uid
+        || existing().ownerUid == request.auth.uid
+        || (
+          existing().status == 'Disetujui' && (
+            existing().accessLevel == 'Umum'
+            || (existing().accessLevel == 'Per Divisi' && existing().divisionId == getUserDivisionId())
+            || (existing().accessLevel == 'Rahasia' && request.auth.uid in existing().allowedUserUids)
+          )
+        )
+      );
+
+      allow list: if isVerifiedUser() && (
+        isBootstrapAdmin()
+        || resource.data.createdByUid == request.auth.uid
+        || resource.data.ownerUid == request.auth.uid
+        || request.auth.uid in resource.data.viewerUids
+        || (resource.data.status == 'Disetujui' && resource.data.accessLevel == 'Umum')
+      );
+
+      allow create: if isVerifiedUser()
+        && isValidId(sopId)
+        && isValidSop(incoming())
+        && incoming().id == sopId
+        && incoming().createdByUid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/divisions/$(incoming().divisionId))
+        && exists(/databases/$(database)/documents/departments/$(incoming().departmentId))
+        && (
+          isSuperAdmin()
+          || isDivisionAdminOf(incoming().divisionId)
+          || (
+            isAuthor()
+            && incoming().status in ['Draft', 'Review']
+            && incoming().approvedByUid == ''
+            && incoming().approvedByName == ''
+          )
+        );
+
+      allow update: if isVerifiedUser()
+        && isValidId(sopId)
+        && isValidSop(incoming())
+        && incoming().id == existing().id
+        && incoming().createdByUid == existing().createdByUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isSuperAdmin()
+          || isDivisionAdminOf(existing().divisionId)
+          || (
+            isAuthor()
+            && (existing().createdByUid == request.auth.uid || existing().ownerUid == request.auth.uid)
+            && existing().status in ['Draft', 'Review']
+            && incoming().status in ['Draft', 'Review']
+            && incoming().approvedByUid == existing().approvedByUid
+            && incoming().approvedByName == existing().approvedByName
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'docNumber', 'title', 'departmentId', 'departmentName', 'purpose', 'scope',
+              'ownerUid', 'ownerName', 'relatedRoles', 'sections', 'attachments',
+              'effectiveDate', 'nextReviewDate', 'status', 'accessLevel',
+              'allowedUserUids', 'viewerUids', 'version', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if isVerifiedUser()
+        && isValidId(sopId)
+        && (isSuperAdmin() || isDivisionAdminOf(existing().divisionId));
+
+      // Immutable SOP Version Snapshots
+      match /versions/{versionId} {
+        allow get: if isVerifiedUser() && isValidId(sopId) && isValidId(versionId) && (
+          isSuperAdmin()
+          || isDivisionAdminOf(get(/databases/$(database)/documents/sops/$(sopId)).data.divisionId)
+          || get(/databases/$(database)/documents/sops/$(sopId)).data.createdByUid == request.auth.uid
+          || get(/databases/$(database)/documents/sops/$(sopId)).data.ownerUid == request.auth.uid
+          || (
+            get(/databases/$(database)/documents/sops/$(sopId)).data.status == 'Disetujui' && (
+              get(/databases/$(database)/documents/sops/$(sopId)).data.accessLevel == 'Umum'
+              || (get(/databases/$(database)/documents/sops/$(sopId)).data.accessLevel == 'Per Divisi' && get(/databases/$(database)/documents/sops/$(sopId)).data.divisionId == getUserDivisionId())
+              || (get(/databases/$(database)/documents/sops/$(sopId)).data.accessLevel == 'Rahasia' && request.auth.uid in get(/databases/$(database)/documents/sops/$(sopId)).data.allowedUserUids)
+            )
+          )
+        );
+
+        allow list: if isVerifiedUser() && resource.data.sopId == sopId && (
+          isBootstrapAdmin()
+          || resource.data.createdByUid == request.auth.uid
+          || resource.data.ownerUid == request.auth.uid
+          || request.auth.uid in resource.data.viewerUids
+          || (resource.data.status == 'Disetujui' && resource.data.accessLevel == 'Umum')
+        );
+
+        allow create: if isVerifiedUser()
+          && isValidId(sopId)
+          && isValidId(versionId)
+          && isValidSopVersion(incoming())
+          && incoming().id == versionId
+          && incoming().sopId == sopId
+          && incoming().editedByUid == request.auth.uid
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/sops/$(sopId))
+          && (
+            isSuperAdmin()
+            || isDivisionAdminOf(get(/databases/$(database)/documents/sops/$(sopId)).data.divisionId)
+            || (
+              isAuthor()
+              && get(/databases/$(database)/documents/sops/$(sopId)).data.createdByUid == request.auth.uid
+            )
+          );
+
+        allow update, delete: if false;
+      }
+    }
+
+    // Approved SOP Logical Chunks + Vector Embeddings
+    match /sopChunks/{chunkId} {
+      allow get: if isVerifiedUser() && isValidId(chunkId) && (
+        isSuperAdmin()
+        || isDivisionAdminOf(existing().divisionId)
+        || existing().accessLevel == 'Umum'
+        || (existing().accessLevel == 'Per Divisi' && existing().divisionId == getUserDivisionId())
+        || (existing().accessLevel == 'Rahasia' && request.auth.uid in existing().viewerUids)
+      );
+
+      allow list: if isVerifiedUser() && (
+        isBootstrapAdmin()
+        || resource.data.accessLevel == 'Umum'
+        || request.auth.uid in resource.data.viewerUids
+      );
+
+      allow create, update: if isVerifiedUser()
+        && isValidId(chunkId)
+        && isValidSopChunk(incoming())
+        && incoming().id == chunkId
+        && incoming().createdAt == request.time
+        && exists(/databases/$(database)/documents/sops/$(incoming().sopId))
+        && (isSuperAdmin() || isDivisionAdminOf(incoming().divisionId));
+
+      allow delete: if isVerifiedUser()
+        && isValidId(chunkId)
+        && (isSuperAdmin() || isDivisionAdminOf(existing().divisionId));
+    }
+
+    // Chat Sessions & Messages
+    match /chatSessions/{sessionId} {
+      allow get: if isVerifiedUser() && isValidId(sessionId) && existing().userId == request.auth.uid;
+      allow list: if isVerifiedUser() && resource.data.userId == request.auth.uid;
+
+      allow create: if isVerifiedUser()
+        && isValidId(sessionId)
+        && isValidChatSession(incoming())
+        && incoming().id == sessionId
+        && incoming().userId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedUser()
+        && isValidId(sessionId)
+        && isValidChatSession(incoming())
+        && existing().userId == request.auth.uid
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'updatedAt']);
+
+      allow delete: if isVerifiedUser() && isValidId(sessionId) && existing().userId == request.auth.uid;
+
+      match /messages/{messageId} {
+        allow get: if isVerifiedUser()
+          && isValidId(sessionId)
+          && isValidId(messageId)
+          && get(/databases/$(database)/documents/chatSessions/$(sessionId)).data.userId == request.auth.uid;
+
+        allow list: if isVerifiedUser() && resource.data.userId == request.auth.uid;
+
+        allow create: if isVerifiedUser()
+          && isValidId(sessionId)
+          && isValidId(messageId)
+          && isValidChatMessage(incoming())
+          && incoming().id == messageId
+          && incoming().sessionId == sessionId
+          && incoming().userId == request.auth.uid
+          && incoming().createdAt == request.time
+          && get(/databases/$(database)/documents/chatSessions/$(sessionId)).data.userId == request.auth.uid;
+
+        allow update: if isVerifiedUser()
+          && isValidId(sessionId)
+          && isValidId(messageId)
+          && isValidChatMessage(incoming())
+          && existing().userId == request.auth.uid
+          && incoming().userId == existing().userId
+          && incoming().createdAt == existing().createdAt
+          && incoming().diff(existing()).affectedKeys().hasOnly(['feedback', 'feedbackNote']);
+
+        allow delete: if false;
+      }
+    }
+
+    // Query & Feedback Analytics Logs
+    match /queryLogs/{logId} {
+      allow get: if isVerifiedUser() && isValidId(logId) && (
+        existing().userId == request.auth.uid
+        || isSuperAdmin()
+        || isDivisionAdminOf(existing().divisionId)
+      );
+
+      allow list: if isVerifiedUser() && (
+        isBootstrapAdmin()
+        || resource.data.userId == request.auth.uid
+        || request.auth.uid in resource.data.adminViewerUids
+      );
+
+      allow create: if isVerifiedUser()
+        && isValidId(logId)
+        && isValidQueryLog(incoming())
+        && incoming().id == logId
+        && incoming().userId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedUser()
+        && isValidId(logId)
+        && isValidQueryLog(incoming())
+        && incoming().id == existing().id
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (
+            existing().userId == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['feedback', 'feedbackNote', 'updatedAt'])
+          )
+          || (
+            (isSuperAdmin() || isDivisionAdminOf(existing().divisionId))
+            && incoming().diff(existing()).affectedKeys().hasOnly(['resolvedAsSopId', 'updatedAt'])
+          )
+        );
+    }
+
+    // Immutable Security & Governance Audit Logs
+    match /auditLogs/{auditId} {
+      allow get: if isVerifiedUser() && isValidId(auditId) && (
+        isSuperAdmin() || isDivisionAdminOf(existing().divisionId)
+      );
+
+      allow list: if isVerifiedUser() && (
+        isBootstrapAdmin() || request.auth.uid in resource.data.adminViewerUids
+      );
+
+      allow create: if isVerifiedUser()
+        && isValidId(auditId)
+        && isValidAuditLog(incoming())
+        && incoming().id == auditId
+        && incoming().actorUid == request.auth.uid
+        && incoming().createdAt == request.time;
+
+      allow update, delete: if false;
+    }
+  }
+}

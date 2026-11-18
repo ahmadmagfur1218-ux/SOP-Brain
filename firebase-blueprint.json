@@ -1,0 +1,317 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Private authenticated user profile including email PII and RBAC role assignment.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "photoURL": { "type": "string", "maxLength": 500 },
+        "role": { "type": "string", "enum": ["Super Admin", "Admin Divisi", "Penulis", "Karyawan"] },
+        "divisionId": { "type": "string", "maxLength": 128 },
+        "divisionName": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "displayName", "role", "divisionId", "divisionName", "createdAt", "updatedAt"]
+    },
+    "DirectoryMember": {
+      "title": "DirectoryMember",
+      "description": "Non-PII workspace member directory for assigning SOP owners and restricted access.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "role": { "type": "string", "enum": ["Super Admin", "Admin Divisi", "Penulis", "Karyawan"] },
+        "divisionId": { "type": "string", "maxLength": 128 },
+        "divisionName": { "type": "string", "maxLength": 120 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "role", "divisionId", "divisionName", "updatedAt"]
+    },
+    "Division": {
+      "title": "Division",
+      "description": "Company division grouping departments and SOPs.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "code": { "type": "string", "minLength": 1, "maxLength": 20 },
+        "description": { "type": "string", "maxLength": 500 },
+        "leadUid": { "type": "string", "maxLength": 128 },
+        "leadName": { "type": "string", "maxLength": 120 },
+        "suggestedQuestions": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "code", "description", "leadUid", "leadName", "suggestedQuestions", "createdAt", "updatedAt"]
+    },
+    "Department": {
+      "title": "Department",
+      "description": "Department belonging to a company division.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "divisionId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "divisionName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "code": { "type": "string", "minLength": 1, "maxLength": 20 },
+        "description": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "divisionId", "divisionName", "name", "code", "description", "createdAt", "updatedAt"]
+    },
+    "SopDocument": {
+      "title": "SopDocument",
+      "description": "Standard Operating Procedure document with lifecycle status, access control, and structured steps.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "docNumber": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "divisionId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "divisionName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "departmentId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "departmentName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "purpose": { "type": "string", "maxLength": 4000 },
+        "scope": { "type": "string", "maxLength": 4000 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "ownerName": { "type": "string", "maxLength": 120 },
+        "relatedRoles": { "type": "array" },
+        "sections": { "type": "array" },
+        "attachments": { "type": "array" },
+        "effectiveDate": { "type": "string", "maxLength": 20 },
+        "nextReviewDate": { "type": "string", "maxLength": 20 },
+        "status": { "type": "string", "enum": ["Draft", "Review", "Disetujui", "Arsip"] },
+        "accessLevel": { "type": "string", "enum": ["Umum", "Per Divisi", "Rahasia"] },
+        "allowedUserUids": { "type": "array" },
+        "viewerUids": { "type": "array" },
+        "version": { "type": "integer" },
+        "createdByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdByName": { "type": "string", "maxLength": 120 },
+        "approvedByUid": { "type": "string", "maxLength": 128 },
+        "approvedByName": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "docNumber", "title", "divisionId", "divisionName",
+        "departmentId", "departmentName", "purpose", "scope",
+        "ownerUid", "ownerName", "relatedRoles", "sections", "attachments",
+        "effectiveDate", "nextReviewDate", "status", "accessLevel",
+        "allowedUserUids", "viewerUids", "version",
+        "createdByUid", "createdByName", "approvedByUid", "approvedByName",
+        "createdAt", "updatedAt"
+      ]
+    },
+    "SopVersion": {
+      "title": "SopVersion",
+      "description": "Immutable historical version snapshot of an SOP document for audit and rollback.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "sopId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "version": { "type": "integer" },
+        "docNumber": { "type": "string", "maxLength": 60 },
+        "title": { "type": "string", "maxLength": 240 },
+        "purpose": { "type": "string", "maxLength": 4000 },
+        "scope": { "type": "string", "maxLength": 4000 },
+        "relatedRoles": { "type": "array" },
+        "sections": { "type": "array" },
+        "attachments": { "type": "array" },
+        "effectiveDate": { "type": "string", "maxLength": 20 },
+        "nextReviewDate": { "type": "string", "maxLength": 20 },
+        "status": { "type": "string", "enum": ["Draft", "Review", "Disetujui", "Arsip"] },
+        "accessLevel": { "type": "string", "enum": ["Umum", "Per Divisi", "Rahasia"] },
+        "createdByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "viewerUids": { "type": "array" },
+        "changeNote": { "type": "string", "maxLength": 500 },
+        "editedByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "editedByName": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "sopId", "version", "docNumber", "title", "purpose", "scope",
+        "relatedRoles", "sections", "attachments", "effectiveDate", "nextReviewDate",
+        "status", "accessLevel", "createdByUid", "ownerUid", "viewerUids",
+        "changeNote", "editedByUid", "editedByName", "createdAt"
+      ]
+    },
+    "SopChunk": {
+      "title": "SopChunk",
+      "description": "Logical section chunk of an approved SOP with Gemini embedding vector and access metadata.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "sopId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "docNumber": { "type": "string", "maxLength": 60 },
+        "title": { "type": "string", "maxLength": 240 },
+        "version": { "type": "integer" },
+        "divisionId": { "type": "string", "maxLength": 128 },
+        "divisionName": { "type": "string", "maxLength": 120 },
+        "departmentName": { "type": "string", "maxLength": 120 },
+        "sectionIndex": { "type": "integer" },
+        "sectionTitle": { "type": "string", "maxLength": 240 },
+        "content": { "type": "string", "maxLength": 12000 },
+        "keywords": { "type": "string", "maxLength": 12000 },
+        "embedding": { "type": "array" },
+        "status": { "type": "string", "enum": ["Disetujui"] },
+        "accessLevel": { "type": "string", "enum": ["Umum", "Per Divisi", "Rahasia"] },
+        "viewerUids": { "type": "array" },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "ownerName": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "sopId", "docNumber", "title", "version", "divisionId",
+        "divisionName", "departmentName", "sectionIndex", "sectionTitle",
+        "content", "keywords", "embedding", "status", "accessLevel",
+        "viewerUids", "ownerUid", "ownerName", "createdAt"
+      ]
+    },
+    "ChatSession": {
+      "title": "ChatSession",
+      "description": "Private employee AI Q&A conversation session.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 120 },
+        "divisionId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "userName", "divisionId", "title", "createdAt", "updatedAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Message in a user's AI Q&A session with citations and feedback.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "role": { "type": "string", "enum": ["user", "assistant"] },
+        "content": { "type": "string", "maxLength": 24000 },
+        "citations": { "type": "array" },
+        "hasConflict": { "type": "boolean" },
+        "answered": { "type": "boolean" },
+        "suggestedContact": { "type": "string", "maxLength": 300 },
+        "feedback": { "type": "string", "enum": ["none", "helpful", "inaccurate", "outdated"] },
+        "feedbackNote": { "type": "string", "maxLength": 500 },
+        "logId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "sessionId", "userId", "role", "content", "citations",
+        "hasConflict", "answered", "suggestedContact", "feedback",
+        "feedbackNote", "logId", "createdAt"
+      ]
+    },
+    "QueryLog": {
+      "title": "QueryLog",
+      "description": "Analytics & governance log of AI questions, unanswered gaps, and user feedback.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 120 },
+        "divisionId": { "type": "string", "maxLength": 128 },
+        "divisionName": { "type": "string", "maxLength": 120 },
+        "question": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "answered": { "type": "boolean" },
+        "matchedSopIds": { "type": "array" },
+        "primarySopId": { "type": "string", "maxLength": 128 },
+        "primarySopTitle": { "type": "string", "maxLength": 240 },
+        "primarySopDocNumber": { "type": "string", "maxLength": 60 },
+        "feedback": { "type": "string", "enum": ["none", "helpful", "inaccurate", "outdated"] },
+        "feedbackNote": { "type": "string", "maxLength": 500 },
+        "resolvedAsSopId": { "type": "string", "maxLength": 128 },
+        "adminViewerUids": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "userId", "userName", "divisionId", "divisionName",
+        "question", "answered", "matchedSopIds", "primarySopId",
+        "primarySopTitle", "primarySopDocNumber", "feedback",
+        "feedbackNote", "resolvedAsSopId", "adminViewerUids",
+        "createdAt", "updatedAt"
+      ]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable security and governance audit trail for SOP lifecycle and RBAC changes.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "actorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "actorName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "action": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "targetType": { "type": "string", "enum": ["SOP", "USER", "DIVISION", "DEPARTMENT"] },
+        "targetId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "targetLabel": { "type": "string", "maxLength": 240 },
+        "divisionId": { "type": "string", "maxLength": 128 },
+        "detail": { "type": "string", "maxLength": 500 },
+        "adminViewerUids": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "actorUid", "actorName", "action", "targetType",
+        "targetId", "targetLabel", "divisionId", "detail",
+        "adminViewerUids", "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Private authenticated user profiles with email PII and RBAC roles."
+    },
+    "/directory/{userId}": {
+      "schema": { "$ref": "#/entities/DirectoryMember" },
+      "description": "Non-PII workspace member directory for assigning SOP owners and restricted access."
+    },
+    "/divisions/{divisionId}": {
+      "schema": { "$ref": "#/entities/Division" },
+      "description": "Company divisions."
+    },
+    "/departments/{departmentId}": {
+      "schema": { "$ref": "#/entities/Department" },
+      "description": "Company departments inside divisions."
+    },
+    "/sops/{sopId}": {
+      "schema": { "$ref": "#/entities/SopDocument" },
+      "description": "SOP documents with status lifecycle and access control."
+    },
+    "/sops/{sopId}/versions/{versionId}": {
+      "schema": { "$ref": "#/entities/SopVersion" },
+      "description": "Immutable SOP version snapshots for rollback and audit."
+    },
+    "/sopChunks/{chunkId}": {
+      "schema": { "$ref": "#/entities/SopChunk" },
+      "description": "Approved SOP logical chunks with embedding vectors for hybrid RAG."
+    },
+    "/chatSessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/ChatSession" },
+      "description": "Private employee AI Q&A conversation sessions."
+    },
+    "/chatSessions/{sessionId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ChatMessage" },
+      "description": "Chat messages inside a conversation session."
+    },
+    "/queryLogs/{logId}": {
+      "schema": { "$ref": "#/entities/QueryLog" },
+      "description": "AI query analytics, unanswered questions, and feedback logs."
+    },
+    "/auditLogs/{auditId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Immutable security and governance audit trail."
+    }
+  }
+}
