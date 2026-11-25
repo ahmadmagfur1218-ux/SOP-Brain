@@ -195,7 +195,7 @@ export function renderSopAnswerToImage(params: RenderAnswerImageParams): string 
       : 'RINGKASAN PROSEDUR';
 
   mCtx.font = '700 22px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-  const questionText = params.question?.trim() || 'Jawaban SOP Brain';
+  const questionText = params.question?.trim() || 'Jawaban NARA AI';
   const questionLines = wrapTextLines(mCtx, questionText, contentWidth - 20, 3);
 
   const headerHeight = 92 + questionLines.length * 30 + 26;
@@ -277,7 +277,7 @@ export function renderSopAnswerToImage(params: RenderAnswerImageParams): string 
   // Header Top Label
   ctx.fillStyle = '#7dd3fc';
   ctx.font = '700 11px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-  ctx.fillText('SOP BRAIN · INFOGRAFIS JAWABAN PROSEDUR', padX, 34);
+  ctx.fillText('NARA AI · INFOGRAFIS JAWABAN PROSEDUR', padX, 34);
 
   // Top-right badge pill
   ctx.font = '700 11px ui-monospace, SFMono-Regular, Menlo, monospace';
@@ -434,7 +434,7 @@ export function renderSopAnswerToImage(params: RenderAnswerImageParams): string 
   ctx.font = '600 12px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
   const sourceLabel = primaryCit
     ? `Sumber Resmi: ${primaryCit.docNumber} · ${primaryCit.title} (v${primaryCit.version})`
-    : 'Sajian Visual Jawaban · SOP Brain Perusahaan';
+    : 'Sajian Visual Jawaban · NARA AI';
   ctx.fillText(sourceLabel.slice(0, 82), padX, footerY + 28);
 
   ctx.fillStyle = '#64748b';

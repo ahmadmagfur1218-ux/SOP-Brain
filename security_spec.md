@@ -25,3 +25,7 @@
 10. **Timestamp Backdating**: Attacker creates `/sops/sop_1` with `createdAt: "2020-01-01T00:00:00Z"` instead of `request.time`.
 11. **Chat Session Hijacking**: Attacker reads or writes `/chatSessions/victim_session/messages/msg_1` owned by another user.
 12. **Version Tampering**: Attacker updates an existing `/sops/sop_1/versions/v1` document to alter historical audit logs.
+13. **Orphaned Maintenance Schedule**: User attempts to create `/maintenanceSchedules/mnt_orphan` referencing a non-existent `assetId`.
+14. **Asset Shadow Field & Role Bypass**: Regular `Karyawan` attempts to create/delete `/assets/ast_1` or inject an unauthorized field `approved: true`.
+15. **Asset ID Tampering on Schedule Update**: PIC attempts to mutate immutable `assetId` or `createdByUid` when marking a maintenance task completed.
+

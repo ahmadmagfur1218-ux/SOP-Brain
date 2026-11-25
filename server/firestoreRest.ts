@@ -116,7 +116,7 @@ async function runChunkQuery(
   return chunks;
 }
 
-const CHUNK_CACHE_TTL_MS = 60_000;
+const CHUNK_CACHE_TTL_MS = 180_000;
 const MAX_CACHED_USERS = 100;
 const chunkCache = new Map<string, { expiresAt: number; chunks: SopChunk[] }>();
 const inFlightChunkQueries = new Map<string, Promise<SopChunk[]>>();
@@ -167,7 +167,8 @@ export async function fetchAccessibleApprovedChunks(params: {
   }
 
   const queryPromise = (async () => {
-    const isBootstrapAdmin = email === 'ahmadmagfur1218@gmail.com';
+    const isBootstrapAdmin =
+      email === 'ahmadmagfur1218@gmail.com' || email === 'superuser@sopbrain.app';
     let result: SopChunk[];
 
     if (isBootstrapAdmin) {
@@ -227,3 +228,325 @@ export async function fetchAccessibleApprovedChunks(params: {
     inFlightChunkQueries.delete(cacheKey);
   }
 }
+
+async function runRawCollectionQuery(
+  idToken: string,
+  structuredQuery: Record<string, unknown>
+): Promise<Record<string, unknown>[]> {
+  const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId}/documents:runQuery`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({ structuredQuery }),
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Firestore query error (${resp.status}): ${errText}`);
+  }
+
+  const rows = (await resp.json()) as Array<{
+    document?: { name: string; fields?: Record<string, FirestoreValue> };
+  }>;
+  const items: Record<string, unknown>[] = [];
+  for (const row of rows) {
+    if (!row.document) continue;
+    items.push(decodeDocument(row.document));
+  }
+  return items;
+}
+
+const ASSET_CACHE_TTL_MS = 120_000;
+const assetDataCache = new Map<
+  string,
+  {
+    expiresAt: number;
+    assets: import('../src/types/sop.ts').CompanyAsset[];
+    schedules: import('../src/types/sop.ts').AssetMaintenanceSchedule[];
+  }
+>();
+
+export function invalidateAssetCache(uid?: string): void {
+  if (!uid) {
+    assetDataCache.clear();
+    return;
+  }
+  for (const key of assetDataCache.keys()) {
+    if (key.startsWith(`${uid}:`)) {
+      assetDataCache.delete(key);
+    }
+  }
+}
+
+async function fetchAccessibleCollectionDocs(params: {
+  idToken: string;
+  uid: string;
+  email?: string;
+  collectionId: 'assets' | 'maintenanceSchedules';
+}): Promise<Record<string, unknown>[]> {
+  const { idToken, uid, email, collectionId } = params;
+  const isBootstrapAdmin =
+    email === 'ahmadmagfur1218@gmail.com' || email === 'superuser@sopbrain.app';
+
+  if (isBootstrapAdmin) {
+    return runRawCollectionQuery(idToken, {
+      from: [{ collectionId }],
+      limit: 300,
+    });
+  }
+
+  const [publicDocs, viewerDocs, picDocs] = await Promise.all([
+    runRawCollectionQuery(idToken, {
+      from: [{ collectionId }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: 'isPublic' },
+          op: 'EQUAL',
+          value: { booleanValue: true },
+        },
+      },
+      limit: 250,
+    }),
+    runRawCollectionQuery(idToken, {
+      from: [{ collectionId }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: 'viewerUids' },
+          op: 'ARRAY_CONTAINS',
+          value: { stringValue: uid },
+        },
+      },
+      limit: 200,
+    }),
+    runRawCollectionQuery(idToken, {
+      from: [{ collectionId }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: 'picUid' },
+          op: 'EQUAL',
+          value: { stringValue: uid },
+        },
+      },
+      limit: 100,
+    }),
+  ]);
+
+  const dedup = new Map<string, Record<string, unknown>>();
+  for (const doc of [...publicDocs, ...viewerDocs, ...picDocs]) {
+    const id = String(doc.id || '');
+    if (id) dedup.set(id, doc);
+  }
+  return Array.from(dedup.values());
+}
+
+export async function fetchAccessibleAssetsAndMaintenance(params: {
+  idToken: string;
+  uid: string;
+  email?: string;
+}): Promise<{
+  assets: import('../src/types/sop.ts').CompanyAsset[];
+  schedules: import('../src/types/sop.ts').AssetMaintenanceSchedule[];
+}> {
+  const { idToken, uid, email } = params;
+  const cacheKey = `${uid}:${email || ''}`;
+  const cached = assetDataCache.get(cacheKey);
+  if (cached && Date.now() <= cached.expiresAt) {
+    return { assets: cached.assets, schedules: cached.schedules };
+  }
+
+  const [rawAssets, rawSchedules] = await Promise.all([
+    fetchAccessibleCollectionDocs({ idToken, uid, email, collectionId: 'assets' }),
+    fetchAccessibleCollectionDocs({ idToken, uid, email, collectionId: 'maintenanceSchedules' }),
+  ]);
+
+  const assets = rawAssets.map((raw) => ({
+    id: String(raw.id || ''),
+    assetCode: String(raw.assetCode || ''),
+    name: String(raw.name || ''),
+    category: (raw.category as import('../src/types/sop.ts').AssetCategory) || 'Lainnya',
+    subCategory: String(raw.subCategory || ''),
+    quantity: Number(raw.quantity || 1),
+    unit: String(raw.unit || 'Unit'),
+    condition: (raw.condition as import('../src/types/sop.ts').AssetCondition) || 'Baik',
+    location: String(raw.location || ''),
+    divisionId: String(raw.divisionId || ''),
+    divisionName: String(raw.divisionName || ''),
+    picUid: String(raw.picUid || ''),
+    picName: String(raw.picName || ''),
+    plateOrSerial: String(raw.plateOrSerial || ''),
+    brandModel: String(raw.brandModel || ''),
+    purchaseDate: String(raw.purchaseDate || ''),
+    currentOdometerKm: Number(raw.currentOdometerKm || 0),
+    notes: String(raw.notes || ''),
+    isPublic: raw.isPublic !== false,
+    viewerUids: Array.isArray(raw.viewerUids) ? raw.viewerUids.map(String) : [],
+    createdByUid: String(raw.createdByUid || ''),
+    createdByName: String(raw.createdByName || ''),
+  }));
+
+  const schedules = rawSchedules.map((raw) => ({
+    id: String(raw.id || ''),
+    assetId: String(raw.assetId || ''),
+    assetCode: String(raw.assetCode || ''),
+    assetName: String(raw.assetName || ''),
+    assetCategory: (raw.assetCategory as import('../src/types/sop.ts').AssetCategory) || 'Lainnya',
+    plateOrSerial: String(raw.plateOrSerial || ''),
+    maintenanceType:
+      (raw.maintenanceType as import('../src/types/sop.ts').MaintenanceType) || 'Lainnya',
+    title: String(raw.title || ''),
+    dueDate: String(raw.dueDate || ''),
+    dueAtMs: Number(raw.dueAtMs || 0),
+    intervalMonths: Number(raw.intervalMonths || 0),
+    intervalKm: Number(raw.intervalKm || 0),
+    targetOdometerKm: Number(raw.targetOdometerKm || 0),
+    reminderDaysBefore: Number(raw.reminderDaysBefore || 14),
+    status: (raw.status as import('../src/types/sop.ts').MaintenanceStatus) || 'Terjadwal',
+    lastCompletedDate: String(raw.lastCompletedDate || ''),
+    estimatedCost: Number(raw.estimatedCost || 0),
+    vendorName: String(raw.vendorName || ''),
+    picUid: String(raw.picUid || ''),
+    picName: String(raw.picName || ''),
+    divisionId: String(raw.divisionId || ''),
+    divisionName: String(raw.divisionName || ''),
+    notes: String(raw.notes || ''),
+    history: Array.isArray(raw.history)
+      ? (raw.history as import('../src/types/sop.ts').MaintenanceHistoryEntry[])
+      : [],
+    isPublic: raw.isPublic !== false,
+    viewerUids: Array.isArray(raw.viewerUids) ? raw.viewerUids.map(String) : [],
+    createdByUid: String(raw.createdByUid || ''),
+    createdByName: String(raw.createdByName || ''),
+  }));
+
+  if (assetDataCache.size >= MAX_CACHED_USERS) {
+    const oldestKey = assetDataCache.keys().next().value;
+    if (oldestKey) assetDataCache.delete(oldestKey);
+  }
+  assetDataCache.set(cacheKey, {
+    expiresAt: Date.now() + ASSET_CACHE_TTL_MS,
+    assets,
+    schedules,
+  });
+
+  return { assets, schedules };
+}
+
+const CALLER_PROFILE_CACHE_TTL_MS = 60_000;
+export interface CallerUserProfile {
+  uid: string;
+  email: string;
+  role: import('../src/types/sop.ts').UserRole;
+  divisionId: string;
+  divisionName: string;
+  erpUserId: number;
+  erpUserCode: string;
+  erpUserName: string;
+}
+
+const callerProfileCache = new Map<
+  string,
+  {
+    expiresAt: number;
+    profile: CallerUserProfile;
+  }
+>();
+
+export function invalidateCallerProfileCache(uid?: string): void {
+  if (!uid) {
+    callerProfileCache.clear();
+    return;
+  }
+  callerProfileCache.delete(uid);
+}
+
+const VALID_ROLES = new Set(['Super Admin', 'Admin Divisi', 'Penulis', 'Karyawan']);
+
+/**
+ * Authoritatively fetches the caller's role, division, and ERP user mapping from Firestore `/users/{uid}`
+ * using their verified Firebase ID Token so backend endpoints never trust client-supplied roles or ERP IDs.
+ */
+export async function fetchCallerUserProfile(params: {
+  idToken: string;
+  uid: string;
+  email?: string;
+}): Promise<CallerUserProfile> {
+  const { idToken, uid, email = '' } = params;
+  const cached = callerProfileCache.get(uid);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.profile;
+  }
+
+  const isBootstrapAdmin =
+    email === 'ahmadmagfur1218@gmail.com' || email === 'superuser@sopbrain.app';
+
+  let role: import('../src/types/sop.ts').UserRole = isBootstrapAdmin ? 'Super Admin' : 'Karyawan';
+  let divisionId = '';
+  let divisionName = '';
+  let erpUserId = 0;
+  let erpUserCode = '';
+  let erpUserName = '';
+
+  try {
+    const safeUid = encodeURIComponent(uid);
+    const url = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/${firebaseConfig.firestoreDatabaseId}/documents/users/${safeUid}`;
+    const resp = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+      },
+    });
+    if (resp.ok) {
+      const doc = (await resp.json()) as {
+        name?: string;
+        fields?: Record<string, FirestoreValue>;
+      };
+      if (doc && doc.fields) {
+        const raw = decodeDocument({ name: doc.name || uid, fields: doc.fields });
+        const rawRole = String(raw.role || '').trim();
+        if (VALID_ROLES.has(rawRole)) {
+          role = rawRole as import('../src/types/sop.ts').UserRole;
+        }
+        divisionId = String(raw.divisionId || '').trim();
+        divisionName = String(raw.divisionName || '').trim();
+        const parsedErpId = Number(raw.erpUserId || 0);
+        erpUserId = Number.isInteger(parsedErpId) && parsedErpId > 0 ? parsedErpId : 0;
+        erpUserCode = String(raw.erpUserCode || '').trim().slice(0, 40);
+        erpUserName = String(raw.erpUserName || '').trim().slice(0, 120);
+      }
+    }
+  } catch (err) {
+    console.warn(
+      '[FirestoreRest] Caller profile lookup fallback:',
+      err instanceof Error ? err.message : err
+    );
+  }
+
+  if (isBootstrapAdmin) {
+    role = 'Super Admin';
+  }
+
+  const profile: CallerUserProfile = {
+    uid,
+    email,
+    role,
+    divisionId,
+    divisionName,
+    erpUserId,
+    erpUserCode,
+    erpUserName,
+  };
+  if (callerProfileCache.size > 150) {
+    const oldest = callerProfileCache.keys().next().value;
+    if (oldest) callerProfileCache.delete(oldest);
+  }
+  callerProfileCache.set(uid, {
+    expiresAt: Date.now() + CALLER_PROFILE_CACHE_TTL_MS,
+    profile,
+  });
+  return profile;
+}
+
+

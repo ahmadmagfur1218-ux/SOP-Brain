@@ -13,11 +13,15 @@ import {
 import type { User as FirebaseUser } from 'firebase/auth';
 import { fetchApiJson } from './apiClient';
 import {
-  BOOTSTRAP_ADMIN_EMAIL,
+  DEFAULT_DIVISION_ADMIN_EMAIL,
+  DEFAULT_ROLE_ACCOUNTS,
   OperationType,
   db,
   getFreshIdToken,
   handleFirestoreError,
+  isBootstrapAdminEmail,
+  normalizeLoginIdentifier,
+  provisionFirebaseUserWithSecondaryApp,
 } from './firebase';
 import { SEED_DEPARTMENTS, SEED_DIVISIONS, SEED_SOPS } from './seedData';
 import type {
@@ -50,12 +54,20 @@ export async function syncUserProfileAndDirectory(fbUser: FirebaseUser): Promise
 
   try {
     const existingSnap = await getDoc(userRef);
-    const isBootstrap = fbUser.email === BOOTSTRAP_ADMIN_EMAIL;
+    const normalizedEmail = (fbUser.email || '').trim().toLowerCase();
+    const isBootstrap = isBootstrapAdminEmail(normalizedEmail);
+    const matchedDefault = DEFAULT_ROLE_ACCOUNTS.find((a) => a.email === normalizedEmail);
 
     if (existingSnap.exists()) {
       const data = existingSnap.data() as UserProfile;
       const desiredRole: UserRole = isBootstrap ? 'Super Admin' : data.role;
-      const displayName = (fbUser.displayName || data.displayName || fbUser.email || 'Pengguna').slice(0, 120);
+      const displayName = (
+        data.displayName ||
+        fbUser.displayName ||
+        matchedDefault?.displayName ||
+        fbUser.email?.split('@')[0] ||
+        'Pengguna'
+      ).slice(0, 120);
       const photoURL = (fbUser.photoURL || data.photoURL || '').slice(0, 500);
 
       if (data.displayName !== displayName || data.role !== desiredRole) {
@@ -84,7 +96,13 @@ export async function syncUserProfileAndDirectory(fbUser: FirebaseUser): Promise
       ) {
         await updateDoc(dirRef, {
           displayName,
-          ...(isBootstrap ? { role: 'Super Admin', divisionId: data.divisionId || '', divisionName: data.divisionName || 'Belum Ditetapkan' } : {}),
+          ...(isBootstrap
+            ? {
+                role: 'Super Admin',
+                divisionId: data.divisionId || '',
+                divisionName: data.divisionName || 'Belum Ditetapkan',
+              }
+            : {}),
           updatedAt: serverTimestamp(),
         });
       }
@@ -97,10 +115,34 @@ export async function syncUserProfileAndDirectory(fbUser: FirebaseUser): Promise
       };
     }
 
-    const initialRole: UserRole = isBootstrap ? 'Super Admin' : 'Karyawan';
-    const displayName = (fbUser.displayName || fbUser.email?.split('@')[0] || 'Pengguna').slice(0, 120);
+    const isDefaultAdmin = normalizedEmail === DEFAULT_DIVISION_ADMIN_EMAIL;
+    const initialRole: UserRole = isBootstrap
+      ? 'Super Admin'
+      : isDefaultAdmin
+      ? 'Admin Divisi'
+      : 'Karyawan';
+    const displayName = (
+      fbUser.displayName ||
+      matchedDefault?.displayName ||
+      fbUser.email?.split('@')[0] ||
+      'Pengguna'
+    ).slice(0, 120);
     const email = (fbUser.email || '').slice(0, 254);
     const photoURL = (fbUser.photoURL || '').slice(0, 500);
+
+    let initialDivisionId = '';
+    let initialDivisionName = 'Belum Ditetapkan';
+    if (initialRole === 'Admin Divisi') {
+      try {
+        const existingDivs = await fetchDivisions();
+        if (existingDivs.length > 0) {
+          initialDivisionId = existingDivs[0].id;
+          initialDivisionName = existingDivs[0].name;
+        }
+      } catch {
+        // Fallback to unassigned division if divisions not yet created
+      }
+    }
 
     const newProfile = {
       uid: fbUser.uid,
@@ -108,8 +150,8 @@ export async function syncUserProfileAndDirectory(fbUser: FirebaseUser): Promise
       displayName,
       photoURL,
       role: initialRole,
-      divisionId: '',
-      divisionName: 'Belum Ditetapkan',
+      divisionId: initialDivisionId,
+      divisionName: initialDivisionName,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
@@ -119,8 +161,8 @@ export async function syncUserProfileAndDirectory(fbUser: FirebaseUser): Promise
       uid: fbUser.uid,
       displayName,
       role: initialRole,
-      divisionId: '',
-      divisionName: 'Belum Ditetapkan',
+      divisionId: initialDivisionId,
+      divisionName: initialDivisionName,
       updatedAt: serverTimestamp(),
     });
 
@@ -130,8 +172,8 @@ export async function syncUserProfileAndDirectory(fbUser: FirebaseUser): Promise
       displayName,
       photoURL,
       role: initialRole,
-      divisionId: '',
-      divisionName: 'Belum Ditetapkan',
+      divisionId: initialDivisionId,
+      divisionName: initialDivisionName,
     };
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, `users/${fbUser.uid}`);
@@ -173,7 +215,7 @@ export async function fetchDirectoryMembers(): Promise<DirectoryMember[]> {
 
 export async function fetchAdminUsersList(currentUser: UserProfile): Promise<UserProfile[]> {
   try {
-    if (currentUser.email === BOOTSTRAP_ADMIN_EMAIL) {
+    if (isBootstrapAdminEmail(currentUser.email)) {
       const snap = await getDocs(collection(db, 'users'));
       return snap.docs.map((d) => d.data() as UserProfile);
     }
@@ -192,6 +234,167 @@ export async function fetchAdminUsersList(currentUser: UserProfile): Promise<Use
     return results;
   } catch (err) {
     handleFirestoreError(err, OperationType.LIST, 'users');
+  }
+}
+
+async function syncSopViewerUidsForDirectory(params: {
+  allSops: SopDocument[];
+  updatedDirectory: DirectoryMember[];
+  actor?: UserProfile;
+}): Promise<void> {
+  const { allSops, updatedDirectory, actor } = params;
+  for (const s of allSops) {
+    const nextViewers = computeViewerUids({
+      divisionId: s.divisionId,
+      accessLevel: s.accessLevel,
+      allowedUserUids: s.allowedUserUids || [],
+      createdByUid: s.createdByUid,
+      ownerUid: s.ownerUid,
+      directory: updatedDirectory,
+    });
+
+    const currSet = new Set(s.viewerUids || []);
+    const changed =
+      nextViewers.length !== currSet.size || nextViewers.some((uid) => !currSet.has(uid));
+    if (!changed) continue;
+
+    await updateDoc(doc(db, 'sops', s.id), {
+      viewerUids: nextViewers,
+      updatedAt: serverTimestamp(),
+    });
+
+    if (s.status === 'Disetujui') {
+      const chunkQuery =
+        !actor || isBootstrapAdminEmail(actor.email)
+          ? query(collection(db, 'sopChunks'), where('sopId', '==', s.id))
+          : query(
+              collection(db, 'sopChunks'),
+              where('sopId', '==', s.id),
+              where('viewerUids', 'array-contains', actor.uid)
+            );
+      const chunkSnap = await getDocs(chunkQuery);
+      for (const cDoc of chunkSnap.docs) {
+        await updateDoc(cDoc.ref, { viewerUids: nextViewers });
+      }
+    }
+  }
+  void invalidateServerRagCache();
+}
+
+export async function createUserAccountAsAdmin(params: {
+  displayName: string;
+  identifier: string;
+  password: string;
+  role: UserRole;
+  divisionId: string;
+  divisionName: string;
+  erpUserId?: number;
+  erpUserCode?: string;
+  erpUserName?: string;
+  allSops: SopDocument[];
+  directory: DirectoryMember[];
+  actor: UserProfile;
+}): Promise<UserProfile> {
+  const cleanName = params.displayName.trim().slice(0, 120);
+  const email = normalizeLoginIdentifier(params.identifier).slice(0, 254);
+  const cleanDivName = (params.divisionName || 'Belum Ditetapkan').slice(0, 120);
+  const cleanErpUserId =
+    typeof params.erpUserId === 'number' && Number.isInteger(params.erpUserId) && params.erpUserId > 0
+      ? params.erpUserId
+      : 0;
+  const cleanErpUserCode = cleanErpUserId > 0 ? String(params.erpUserCode || '').trim().slice(0, 40) : '';
+  const cleanErpUserName = cleanErpUserId > 0 ? String(params.erpUserName || '').trim().slice(0, 120) : '';
+
+  if (!cleanName) {
+    throw new Error('Nama lengkap wajib diisi.');
+  }
+  if (!email) {
+    throw new Error('Username atau email tidak valid.');
+  }
+  if (params.password.length < 6) {
+    throw new Error('Kata sandi minimal 6 karakter.');
+  }
+
+  const created = await provisionFirebaseUserWithSecondaryApp({
+    email,
+    password: params.password,
+    displayName: cleanName,
+  });
+
+  try {
+    await setDoc(doc(db, 'users', created.uid), {
+      uid: created.uid,
+      email: created.email,
+      displayName: created.displayName,
+      photoURL: '',
+      role: params.role,
+      divisionId: params.divisionId || '',
+      divisionName: cleanDivName,
+      erpUserId: cleanErpUserId,
+      erpUserCode: cleanErpUserCode,
+      erpUserName: cleanErpUserName,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    await setDoc(doc(db, 'directory', created.uid), {
+      uid: created.uid,
+      displayName: created.displayName,
+      role: params.role,
+      divisionId: params.divisionId || '',
+      divisionName: cleanDivName,
+      updatedAt: serverTimestamp(),
+    });
+
+    const nextDirectory: DirectoryMember[] = [
+      ...params.directory.filter((m) => m.uid !== created.uid),
+      {
+        uid: created.uid,
+        displayName: created.displayName,
+        role: params.role,
+        divisionId: params.divisionId || '',
+        divisionName: cleanDivName,
+      },
+    ];
+
+    await syncSopViewerUidsForDirectory({
+      allSops: params.allSops,
+      updatedDirectory: nextDirectory,
+      actor: params.actor,
+    });
+
+    const erpDetail =
+      cleanErpUserId > 0 ? ` · Akun ERP: ${cleanErpUserCode || `#${cleanErpUserId}`} (${cleanErpUserName})` : '';
+
+    await recordAuditLog({
+      actor: params.actor,
+      action: 'Buat Akun Pengguna',
+      targetType: 'USER',
+      targetId: created.uid,
+      targetLabel: `${created.displayName} (${created.email})`,
+      divisionId: params.divisionId || 'general',
+      detail: `Peran: ${params.role} · Divisi: ${cleanDivName}${erpDetail}`,
+      directory: nextDirectory,
+    });
+
+    return {
+      uid: created.uid,
+      email: created.email,
+      displayName: created.displayName,
+      photoURL: '',
+      role: params.role,
+      divisionId: params.divisionId || '',
+      divisionName: cleanDivName,
+      ...(cleanErpUserId > 0
+        ? {
+            erpUserId: cleanErpUserId,
+            erpUserCode: cleanErpUserCode,
+            erpUserName: cleanErpUserName,
+          }
+        : {}),
+    };
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, `users/${created.uid}`);
   }
 }
 
@@ -237,45 +440,344 @@ export async function updateUserRoleAndDivision(params: {
           },
         ];
 
-    for (const s of allSops) {
-      const nextViewers = computeViewerUids({
-        divisionId: s.divisionId,
-        accessLevel: s.accessLevel,
-        allowedUserUids: s.allowedUserUids || [],
-        createdByUid: s.createdByUid,
-        ownerUid: s.ownerUid,
-        directory: updatedDirectory,
-      });
-
-      const currSet = new Set(s.viewerUids || []);
-      const changed =
-        nextViewers.length !== currSet.size || nextViewers.some((uid) => !currSet.has(uid));
-      if (!changed) continue;
-
-      await updateDoc(doc(db, 'sops', s.id), {
-        viewerUids: nextViewers,
-        updatedAt: serverTimestamp(),
-      });
-
-      if (s.status === 'Disetujui') {
-        const chunkQuery =
-          !actor || actor.email === BOOTSTRAP_ADMIN_EMAIL
-            ? query(collection(db, 'sopChunks'), where('sopId', '==', s.id))
-            : query(
-                collection(db, 'sopChunks'),
-                where('sopId', '==', s.id),
-                where('viewerUids', 'array-contains', actor.uid)
-              );
-        const chunkSnap = await getDocs(chunkQuery);
-        for (const cDoc of chunkSnap.docs) {
-          await updateDoc(cDoc.ref, { viewerUids: nextViewers });
-        }
-      }
-    }
-    void invalidateServerRagCache();
+    await syncSopViewerUidsForDirectory({
+      allSops,
+      updatedDirectory,
+      actor,
+    });
+    void invalidateServerErpCache();
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `users/${targetUid}`);
   }
+}
+
+export async function updateUserErpMapping(params: {
+  targetUid: string;
+  erpUserId: number;
+  erpUserCode: string;
+  erpUserName: string;
+  targetDisplayName?: string;
+  directory?: DirectoryMember[];
+  actor?: UserProfile;
+}): Promise<void> {
+  const cleanId =
+    Number.isInteger(params.erpUserId) && params.erpUserId > 0 ? params.erpUserId : 0;
+  const cleanCode = cleanId > 0 ? String(params.erpUserCode || '').trim().slice(0, 40) : '';
+  const cleanName = cleanId > 0 ? String(params.erpUserName || '').trim().slice(0, 120) : '';
+
+  try {
+    await updateDoc(doc(db, 'users', params.targetUid), {
+      erpUserId: cleanId,
+      erpUserCode: cleanCode,
+      erpUserName: cleanName,
+      updatedAt: serverTimestamp(),
+    });
+
+    if (params.actor) {
+      await recordAuditLog({
+        actor: params.actor,
+        action: 'Pemetaan Akun ERP',
+        targetType: 'USER',
+        targetId: params.targetUid,
+        targetLabel: params.targetDisplayName || params.targetUid,
+        divisionId: 'general',
+        detail:
+          cleanId > 0
+            ? `Dipetakan ke akun ERP ${cleanCode || `#${cleanId}`} (${cleanName})`
+            : 'Pemetaan akun ERP dilepas (notifikasi Purchasing dinonaktifkan)',
+        directory: params.directory || [],
+      });
+    }
+
+    await invalidateServerErpCache();
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `users/${params.targetUid}`);
+  }
+}
+
+export interface ErpBatchSyncUserInput {
+  erpUserId: number;
+  erpUserCode: string;
+  erpUserName: string;
+}
+
+export interface ErpBatchSyncResult {
+  created: UserProfile[];
+  linked: Array<{
+    uid: string;
+    erpUserId: number;
+    erpUserCode: string;
+    erpUserName: string;
+  }>;
+  skipped: Array<{ code: string; name: string; reason: string }>;
+  failed: Array<{ code: string; name: string; reason: string }>;
+}
+
+/**
+ * Bulk-provisions or auto-links ERP `m0_user` accounts into SOP Brain (Option 1).
+ * - Uses isolated secondary Firebase Auth app per user so the Super Admin's active session is NEVER disturbed.
+ * - Strictly skips/protects fixed bootstrap Super Admin emails and the currently logged-in Super Admin.
+ * - Never touches ERP `upassword`; sets an explicit admin-chosen initial password for newly created accounts.
+ */
+export async function syncErpUsersBatchAsAdmin(params: {
+  erpUsers: ErpBatchSyncUserInput[];
+  existingUsers: UserProfile[];
+  initialPassword: string;
+  defaultRole: Exclude<UserRole, 'Super Admin'>;
+  defaultDivisionId: string;
+  defaultDivisionName: string;
+  allSops: SopDocument[];
+  directory: DirectoryMember[];
+  actor: UserProfile;
+  onProgress?: (current: number, total: number, label: string) => void;
+}): Promise<ErpBatchSyncResult> {
+  const result: ErpBatchSyncResult = {
+    created: [],
+    linked: [],
+    skipped: [],
+    failed: [],
+  };
+
+  if (params.actor.role !== 'Super Admin') {
+    throw new Error('Hanya Super Admin yang dapat melakukan sinkronisasi akun ERP.');
+  }
+
+  const cleanDivName = (params.defaultDivisionName || 'Belum Ditetapkan').slice(0, 120);
+  const actorEmailLower = params.actor.email.trim().toLowerCase();
+
+  const existingByErpId = new Map<number, UserProfile>();
+  const existingByEmail = new Map<string, UserProfile>();
+  for (const u of params.existingUsers) {
+    if (u.erpUserId && u.erpUserId > 0) {
+      existingByErpId.set(u.erpUserId, u);
+    }
+    if (u.email) {
+      existingByEmail.set(u.email.trim().toLowerCase(), u);
+    }
+  }
+
+  let workingDirectory = [...params.directory];
+  const total = params.erpUsers.length;
+
+  for (let i = 0; i < total; i++) {
+    const eu = params.erpUsers[i];
+    const cleanCode = String(eu.erpUserCode || '').trim().slice(0, 40);
+    const cleanName = String(eu.erpUserName || cleanCode || `ERP #${eu.erpUserId}`)
+      .trim()
+      .slice(0, 120);
+    params.onProgress?.(i + 1, total, `${cleanName} (${cleanCode})`);
+
+    if (!eu.erpUserId || eu.erpUserId <= 0 || !cleanCode) {
+      result.skipped.push({
+        code: cleanCode || `#${eu.erpUserId}`,
+        name: cleanName,
+        reason: 'Kode user ERP kosong atau tidak valid.',
+      });
+      continue;
+    }
+
+    const normalizedEmail = normalizeLoginIdentifier(cleanCode).slice(0, 254);
+    if (!normalizedEmail) {
+      result.skipped.push({
+        code: cleanCode,
+        name: cleanName,
+        reason: 'Format kode user ERP tidak dapat dijadikan username login.',
+      });
+      continue;
+    }
+
+    // Hard guard: NEVER touch fixed Super Admin accounts or active Super Admin actor
+    if (
+      isBootstrapAdminEmail(normalizedEmail) ||
+      normalizedEmail === actorEmailLower ||
+      cleanCode.toLowerCase() === 'superuser'
+    ) {
+      result.skipped.push({
+        code: cleanCode,
+        name: cleanName,
+        reason: 'Dilindungi — akun Super User tetap tidak diubah.',
+      });
+      continue;
+    }
+
+    // Already mapped to an existing SOP Brain account
+    if (existingByErpId.has(eu.erpUserId)) {
+      result.skipped.push({
+        code: cleanCode,
+        name: cleanName,
+        reason: 'Sudah terpetakan ke akun NARA AI.',
+      });
+      continue;
+    }
+
+    // Existing non-bootstrap account with matching email -> auto-link without creating duplicate Auth
+    const existingMatch = existingByEmail.get(normalizedEmail);
+    if (existingMatch) {
+      if (isBootstrapAdminEmail(existingMatch.email) || existingMatch.role === 'Super Admin') {
+        result.skipped.push({
+          code: cleanCode,
+          name: cleanName,
+          reason: 'Dilindungi — akun Super Admin tetap tidak diubah.',
+        });
+        continue;
+      }
+      try {
+        await updateDoc(doc(db, 'users', existingMatch.uid), {
+          erpUserId: eu.erpUserId,
+          erpUserCode: cleanCode,
+          erpUserName: cleanName,
+          updatedAt: serverTimestamp(),
+        });
+        existingByErpId.set(eu.erpUserId, {
+          ...existingMatch,
+          erpUserId: eu.erpUserId,
+          erpUserCode: cleanCode,
+          erpUserName: cleanName,
+        });
+        result.linked.push({
+          uid: existingMatch.uid,
+          erpUserId: eu.erpUserId,
+          erpUserCode: cleanCode,
+          erpUserName: cleanName,
+        });
+      } catch (err) {
+        result.failed.push({
+          code: cleanCode,
+          name: cleanName,
+          reason: err instanceof Error ? err.message : 'Gagal menautkan akun yang sudah ada.',
+        });
+      }
+      continue;
+    }
+
+    // Brand-new account creation requires valid initial password
+    if (!params.initialPassword || params.initialPassword.length < 6) {
+      result.failed.push({
+        code: cleanCode,
+        name: cleanName,
+        reason: 'Kata sandi awal minimal 6 karakter wajib diisi untuk membuat akun baru.',
+      });
+      continue;
+    }
+
+    try {
+      const created = await provisionFirebaseUserWithSecondaryApp({
+        email: normalizedEmail,
+        password: params.initialPassword,
+        displayName: cleanName,
+      });
+
+      await setDoc(doc(db, 'users', created.uid), {
+        uid: created.uid,
+        email: created.email,
+        displayName: created.displayName,
+        photoURL: '',
+        role: params.defaultRole,
+        divisionId: params.defaultDivisionId || '',
+        divisionName: cleanDivName,
+        erpUserId: eu.erpUserId,
+        erpUserCode: cleanCode,
+        erpUserName: cleanName,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      await setDoc(doc(db, 'directory', created.uid), {
+        uid: created.uid,
+        displayName: created.displayName,
+        role: params.defaultRole,
+        divisionId: params.defaultDivisionId || '',
+        divisionName: cleanDivName,
+        updatedAt: serverTimestamp(),
+      });
+
+      const newProfile: UserProfile = {
+        uid: created.uid,
+        email: created.email,
+        displayName: created.displayName,
+        photoURL: '',
+        role: params.defaultRole,
+        divisionId: params.defaultDivisionId || '',
+        divisionName: cleanDivName,
+        erpUserId: eu.erpUserId,
+        erpUserCode: cleanCode,
+        erpUserName: cleanName,
+      };
+
+      workingDirectory = [
+        ...workingDirectory.filter((m) => m.uid !== created.uid),
+        {
+          uid: created.uid,
+          displayName: created.displayName,
+          role: params.defaultRole,
+          divisionId: params.defaultDivisionId || '',
+          divisionName: cleanDivName,
+        },
+      ];
+      existingByErpId.set(eu.erpUserId, newProfile);
+      existingByEmail.set(normalizedEmail, newProfile);
+      result.created.push(newProfile);
+    } catch (err) {
+      const code =
+        typeof err === 'object' && err !== null && 'code' in err
+          ? String((err as { code?: unknown }).code || '')
+          : '';
+      const reason =
+        code === 'auth/email-already-in-use'
+          ? 'Username sudah terdaftar di Firebase Auth (gunakan mapping manual pada akun terkait).'
+          : err instanceof Error
+            ? err.message
+            : 'Gagal membuat akun Firebase.';
+      result.failed.push({ code: cleanCode, name: cleanName, reason });
+    }
+  }
+
+  if (result.created.length > 0) {
+    try {
+      await syncSopViewerUidsForDirectory({
+        allSops: params.allSops,
+        updatedDirectory: workingDirectory,
+        actor: params.actor,
+      });
+    } catch (err) {
+      console.warn('[ErpBatchSync] syncSopViewerUids warning:', err);
+    }
+  }
+
+  if (result.created.length > 0 || result.linked.length > 0) {
+    try {
+      await recordAuditLog({
+        actor: params.actor,
+        action: 'Sinkronisasi Massal Akun ERP',
+        targetType: 'USER',
+        targetId: 'erp-batch-sync',
+        targetLabel: `${result.created.length} dibuat · ${result.linked.length} ditautkan`,
+        divisionId: params.defaultDivisionId || 'general',
+        detail: `Sinkron m0_user: ${result.created.length} akun baru (peran ${params.defaultRole}, divisi ${cleanDivName}), ${result.linked.length} akun ditautkan, ${result.skipped.length} dilewati, ${result.failed.length} gagal.`,
+        directory: workingDirectory,
+      });
+    } catch {
+      // Non-critical audit warning
+    }
+    await invalidateServerErpCache();
+  }
+
+  return result;
+}
+
+function invalidateServerErpCache(tokenOverride?: string): Promise<void> {
+  return (async () => {
+    try {
+      const token = tokenOverride || (await getFreshIdToken());
+      if (!token) return;
+      await fetch('/api/erp/refresh', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch {
+      // Non-critical cache invalidation; 45s TTL handles eventual consistency
+    }
+  })();
 }
 
 function invalidateServerRagCache(tokenOverride?: string): Promise<void> {
@@ -326,7 +828,7 @@ export function computeViewerUids(params: {
 
 export async function fetchAccessibleSops(user: UserProfile): Promise<SopDocument[]> {
   try {
-    if (user.email === BOOTSTRAP_ADMIN_EMAIL) {
+    if (isBootstrapAdminEmail(user.email)) {
       const snap = await getDocs(collection(db, 'sops'));
       return snap.docs.map((d) => d.data() as SopDocument);
     }
@@ -373,7 +875,7 @@ export async function fetchSopVersions(sop: SopDocument, user: UserProfile): Pro
   try {
     const colRef = collection(db, 'sops', sop.id, 'versions');
     let q;
-    if (user.email === BOOTSTRAP_ADMIN_EMAIL) {
+    if (isBootstrapAdminEmail(user.email)) {
       q = query(colRef, where('sopId', '==', sop.id));
     } else if (sop.status === 'Disetujui' && sop.accessLevel === 'Umum') {
       q = query(
@@ -403,7 +905,7 @@ async function deleteExistingSopChunks(sopId: string, user: UserProfile): Promis
   try {
     const colRef = collection(db, 'sopChunks');
     let snap;
-    if (user.email === BOOTSTRAP_ADMIN_EMAIL) {
+    if (isBootstrapAdminEmail(user.email)) {
       snap = await getDocs(query(colRef, where('sopId', '==', sopId)));
     } else {
       snap = await getDocs(
@@ -790,19 +1292,38 @@ export async function ensureDivisionAndDepartment(params: {
   return { division, department, created };
 }
 
+function getSessionTimestampMillis(ts: unknown): number {
+  if (!ts) return 0;
+  if (typeof ts === 'number') return ts;
+  if (ts instanceof Date) return ts.getTime();
+  if (typeof ts === 'object') {
+    const obj = ts as { toMillis?: () => number; seconds?: number; nanoseconds?: number };
+    if (typeof obj.toMillis === 'function') return obj.toMillis();
+    if (typeof obj.seconds === 'number') {
+      return obj.seconds * 1000 + Math.floor((obj.nanoseconds || 0) / 1e6);
+    }
+  }
+  return 0;
+}
+
+export function sortChatSessions(list: ChatSession[]): ChatSession[] {
+  return [...list].sort((a, b) => {
+    const pinDiff = Number(Boolean(b.isPinned)) - Number(Boolean(a.isPinned));
+    if (pinDiff !== 0) return pinDiff;
+    if (a.isPinned && b.isPinned) {
+      const pinTimeDiff = (b.pinnedAt || 0) - (a.pinnedAt || 0);
+      if (pinTimeDiff !== 0) return pinTimeDiff;
+    }
+    return getSessionTimestampMillis(b.updatedAt) - getSessionTimestampMillis(a.updatedAt);
+  });
+}
+
 export async function fetchChatSessions(userId: string): Promise<ChatSession[]> {
   try {
     const snap = await getDocs(
       query(collection(db, 'chatSessions'), where('userId', '==', userId))
     );
-    return snap.docs
-      .map((d) => d.data() as ChatSession)
-      .sort((a, b) => {
-        const ta = (a.updatedAt as { seconds?: number })?.seconds || 0;
-        const tb = (b.updatedAt as { seconds?: number })?.seconds || 0;
-        return tb - ta;
-      })
-      .slice(0, 30);
+    return sortChatSessions(snap.docs.map((d) => d.data() as ChatSession)).slice(0, 50);
   } catch (err) {
     handleFirestoreError(err, OperationType.LIST, 'chatSessions');
   }
@@ -819,6 +1340,8 @@ export async function createChatSession(params: {
     userName: params.user.displayName.slice(0, 120),
     divisionId: params.user.divisionId || '',
     title: params.title.slice(0, 200),
+    isPinned: false,
+    pinnedAt: 0,
   };
   try {
     await setDoc(doc(db, 'chatSessions', id), {
@@ -826,9 +1349,45 @@ export async function createChatSession(params: {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
-    return session;
+    return {
+      ...session,
+      updatedAt: Date.now(),
+    };
   } catch (err) {
     handleFirestoreError(err, OperationType.CREATE, `chatSessions/${id}`);
+  }
+}
+
+export async function renameChatSession(sessionId: string, title: string): Promise<string> {
+  const trimmed = title.trim().slice(0, 200);
+  if (!trimmed) {
+    throw new Error('Judul percakapan tidak boleh kosong.');
+  }
+  try {
+    await updateDoc(doc(db, 'chatSessions', sessionId), {
+      title: trimmed,
+      updatedAt: serverTimestamp(),
+    });
+    return trimmed;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `chatSessions/${sessionId}`);
+  }
+}
+
+export async function togglePinChatSession(
+  sessionId: string,
+  isPinned: boolean
+): Promise<{ isPinned: boolean; pinnedAt: number }> {
+  const pinnedAt = isPinned ? Date.now() : 0;
+  try {
+    await updateDoc(doc(db, 'chatSessions', sessionId), {
+      isPinned,
+      pinnedAt,
+      updatedAt: serverTimestamp(),
+    });
+    return { isPinned, pinnedAt };
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `chatSessions/${sessionId}`);
   }
 }
 
@@ -977,10 +1536,28 @@ export async function submitAnswerFeedback(params: {
   }
 }
 
+export async function updateQueryLogFeedback(params: {
+  logId: string;
+  feedback: FeedbackType;
+  feedbackNote?: string;
+}): Promise<void> {
+  if (!params.logId) return;
+  const note = (params.feedbackNote || '').slice(0, 500);
+  try {
+    await updateDoc(doc(db, 'queryLogs', params.logId), {
+      feedback: params.feedback,
+      feedbackNote: note,
+      updatedAt: serverTimestamp(),
+    });
+  } catch {
+    // Non-blocking: analytics log update should not block user chat feedback
+  }
+}
+
 export async function fetchQueryLogsForAdmin(user: UserProfile): Promise<QueryLog[]> {
   try {
     let snap;
-    if (user.email === BOOTSTRAP_ADMIN_EMAIL) {
+    if (isBootstrapAdminEmail(user.email)) {
       snap = await getDocs(collection(db, 'queryLogs'));
     } else {
       snap = await getDocs(
@@ -1104,7 +1681,7 @@ export async function recordAuditLog(params: {
 export async function fetchAuditLogs(user: UserProfile): Promise<AuditLog[]> {
   try {
     let snap;
-    if (user.email === BOOTSTRAP_ADMIN_EMAIL) {
+    if (isBootstrapAdminEmail(user.email)) {
       snap = await getDocs(collection(db, 'auditLogs'));
     } else {
       snap = await getDocs(

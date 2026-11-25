@@ -1,9 +1,26 @@
 import React from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import idMessages from '../locales/id.json';
+import enMessages from '../locales/en.json';
+import jaMessages from '../locales/ja.json';
 
 interface ErrorBoundaryState {
   hasError: boolean;
   message: string;
+}
+
+function getBoundaryCopy() {
+  let lang = 'id';
+  try {
+    const stored = window.localStorage.getItem('sop-brain-locale');
+    if (stored === 'en' || stored === 'ja' || stored === 'id') lang = stored;
+    else if (document.documentElement.lang) lang = document.documentElement.lang;
+  } catch {
+    // Fallback to id
+  }
+  if (lang === 'en') return enMessages.errors;
+  if (lang === 'ja') return jaMessages.errors;
+  return idMessages.errors;
 }
 
 export class ErrorBoundary extends React.Component<
@@ -16,9 +33,10 @@ export class ErrorBoundary extends React.Component<
   }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    const copy = getBoundaryCopy();
     return {
       hasError: true,
-      message: error.message || 'Terjadi kesalahan pada aplikasi.',
+      message: error.message || copy.boundaryFallback,
     };
   }
 
@@ -28,31 +46,39 @@ export class ErrorBoundary extends React.Component<
 
   render() {
     if (this.state.hasError) {
+      const copy = getBoundaryCopy();
       let friendly = this.state.message;
       try {
-        const parsed = JSON.parse(this.state.message) as { error?: string; operationType?: string };
+        const parsed = JSON.parse(this.state.message) as {
+          error?: string;
+          operationType?: string;
+        };
         if (parsed?.error) {
-          friendly = `Akses database (${parsed.operationType || 'operasi'}): ${parsed.error}`;
+          friendly = `${parsed.operationType || 'DB'}: ${parsed.error}`;
         }
       } catch {
         // Plain error message
       }
 
       return (
-        <div className="min-h-screen bg-white dark:bg-[#212121] flex items-center justify-center p-6">
-          <div className="max-w-lg w-full bg-neutral-50 dark:bg-[#2a2a2a] border border-neutral-200 dark:border-white/[0.08] rounded-2xl p-6 space-y-4">
-            <div className="flex items-center gap-3 text-rose-700 dark:text-rose-400">
+        <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center p-6">
+          <div className="max-w-lg w-full bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3 text-[var(--danger)]">
               <AlertTriangle className="w-5 h-5 shrink-0" />
-              <h2 className="text-base font-semibold">Terjadi Kendala Aplikasi</h2>
+              <h2 className="font-display text-base font-semibold text-[var(--text)]">
+                {copy.boundaryTitle}
+              </h2>
             </div>
-            <p className="text-sm text-neutral-600 dark:text-neutral-300 leading-relaxed break-words">{friendly}</p>
+            <p className="text-sm text-[var(--text-muted)] leading-relaxed break-words">
+              {friendly}
+            </p>
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200 rounded-lg transition-colors cursor-pointer"
+              className="inline-flex items-center gap-2 h-10 px-4 text-sm font-semibold bg-[var(--accent)] text-[var(--on-accent)] hover:bg-[var(--accent-hover)] rounded-lg transition-colors cursor-pointer"
             >
               <RefreshCw className="w-4 h-4" />
-              Muat Ulang Halaman
+              <span>{copy.reloadPage}</span>
             </button>
           </div>
         </div>

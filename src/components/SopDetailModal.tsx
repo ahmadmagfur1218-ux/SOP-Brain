@@ -45,6 +45,7 @@ import {
   saveSopWithVersionAndIndex,
   stripSopMediaForAi,
 } from '../lib/sopService';
+import { DeleteConfirmModal } from './DeleteConfirmModal';
 import type {
   AccessLevel,
   Department,
@@ -117,6 +118,8 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
   const [changeNote, setChangeNote] = useState('');
   const [zoomedPage, setZoomedPage] = useState<{ url: string; caption: string } | null>(null);
   const bodyScrollRef = useRef<HTMLDivElement>(null);
+
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   const isFocusReading = focusReading && mode === 'read' && Boolean(sop);
 
@@ -795,11 +798,13 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
     setSaving(true);
     try {
       await deleteSopAndChunks(sop, user, directory);
+      setConfirmDeleteOpen(false);
       onDeleted(sop.id);
       onClose();
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Gagal menghapus SOP.');
       setSaving(false);
+      setConfirmDeleteOpen(false);
     }
   };
 
@@ -807,50 +812,50 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
     <div
       className={`fixed inset-0 z-50 flex items-center justify-center transition-colors ${
         isFocusReading
-          ? 'bg-neutral-950/75 dark:bg-black/85 p-2 sm:p-4'
-          : 'bg-neutral-900/50 dark:bg-black/75 p-3 sm:p-6'
+          ? 'bg-[var(--overlay-bg)] dark:bg-black/85 p-2 sm:p-4'
+          : 'bg-[var(--overlay-bg)] dark:bg-black/75 p-3 sm:p-6'
       }`}
     >
       <div
-        className={`border border-neutral-200 dark:border-white/[0.1] rounded-2xl w-full flex flex-col overflow-hidden transition-all ${
+        className={`border border-[var(--border)] dark:border-[#33333A] rounded-2xl w-full flex flex-col overflow-hidden transition-all ${
           isFocusReading
-            ? 'bg-white dark:bg-[#212121] max-w-5xl h-[94vh] max-h-[94vh] shadow-2xl'
-            : 'bg-white dark:bg-[#212121] max-w-4xl max-h-[92vh]'
+            ? 'bg-[var(--surface)] dark:bg-[#131316] max-w-5xl h-[94vh] max-h-[94vh] shadow-[var(--modal-shadow)] dark:shadow-2xl'
+            : 'bg-[var(--surface)] dark:bg-[#131316] max-w-4xl max-h-[92vh]'
         }`}
       >
         {/* Header */}
         {isFocusReading && sop ? (
-          <div className="relative bg-white/95 dark:bg-[#171717]/95 backdrop-blur-sm border-b border-neutral-200 dark:border-white/[0.08] px-5 sm:px-6 py-2.5 flex items-center justify-between gap-4 shrink-0">
+          <div className="relative bg-[var(--surface)]/95 dark:bg-[#131316]/95 backdrop-blur-sm border-b border-[var(--border)] dark:border-[#33333A] px-5 sm:px-6 py-2.5 flex items-center justify-between gap-4 shrink-0">
             <div className="min-w-0 flex items-center gap-2.5">
-              <BookOpen className="w-4 h-4 text-neutral-600 dark:text-[#a0a0a0] shrink-0" />
-              <span className="font-mono text-xs font-semibold text-neutral-900 dark:text-[#ececec] shrink-0">
+              <BookOpen className="w-4 h-4 text-neutral-600 dark:text-[#A1A1AA] shrink-0" />
+              <span className="font-mono text-xs font-semibold text-neutral-900 dark:text-[#F4F4F5] shrink-0">
                 {sop.docNumber}
               </span>
               <span className="text-neutral-300 dark:text-[#555555] shrink-0">·</span>
-              <h2 className="font-display text-sm font-semibold text-neutral-900 dark:text-[#ececec] truncate">
+              <h2 className="font-display text-sm font-semibold text-neutral-900 dark:text-[#F4F4F5] truncate">
                 {sop.title}
               </h2>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              <span className="hidden sm:inline font-mono text-[11px] text-neutral-400 dark:text-[#7a7a7a] tabular-nums">
+              <span className="hidden sm:inline font-mono text-[11px] text-neutral-400 dark:text-[#A1A1AA] tabular-nums">
                 {readProgress}%
               </span>
               <button
                 type="button"
                 onClick={() => setFocusReading(false)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-[#e0e0e0] bg-neutral-100 dark:bg-[#2a2a2a] hover:bg-neutral-200 dark:hover:bg-[#343434] rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-[#F4F4F5] bg-[var(--surface-3)] dark:bg-[#25252A] hover:bg-neutral-200 dark:hover:bg-[#2F2F36] rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <Minimize2 className="w-3.5 h-3.5" />
                 <span>Keluar Mode Fokus</span>
-                <span className="hidden sm:inline text-[10px] text-neutral-400 dark:text-[#7a7a7a] font-mono">
+                <span className="hidden sm:inline text-[10px] text-neutral-400 dark:text-[#A1A1AA] font-mono">
                   (Esc)
                 </span>
               </button>
               <button
                 type="button"
                 onClick={onClose}
-                className="p-1.5 text-neutral-400 dark:text-[#7a7a7a] hover:text-neutral-700 dark:hover:text-[#ececec] rounded-lg hover:bg-neutral-100 dark:hover:bg-[#2a2a2a] transition-colors cursor-pointer"
+                className="p-1.5 text-neutral-400 dark:text-[#A1A1AA] hover:text-neutral-700 dark:hover:text-[#F4F4F5] rounded-lg hover:bg-[var(--surface-2)] dark:hover:bg-[#2F2F36] transition-colors cursor-pointer"
                 aria-label="Tutup"
               >
                 <X className="w-4 h-4" />
@@ -862,10 +867,10 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
             />
           </div>
         ) : (
-          <div className="px-6 py-4 border-b border-neutral-200 dark:border-white/[0.08] bg-white dark:bg-[#171717] flex items-center justify-between gap-4">
+          <div className="px-6 py-4 border-b border-[var(--border)] dark:border-[#33333A] bg-[var(--surface)] dark:bg-[#131316] flex items-center justify-between gap-4">
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-500 dark:text-[#8e8e8e]">
-                <span className="font-mono font-semibold text-neutral-900 dark:text-[#ececec]">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-500 dark:text-[#A1A1AA]">
+                <span className="font-mono font-semibold text-neutral-900 dark:text-[#F4F4F5]">
                   {isNew ? 'SOP BARU' : docNumber}
                 </span>
                 {!isNew && (
@@ -879,7 +884,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                           ? 'text-emerald-700 dark:text-emerald-400'
                           : sop.status === 'Review'
                           ? 'text-amber-700 dark:text-amber-400'
-                          : 'text-neutral-600 dark:text-[#a0a0a0]'
+                          : 'text-neutral-600 dark:text-[#A1A1AA]'
                       }`}
                     >
                       {sop.status}
@@ -889,21 +894,21 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                   </>
                 )}
               </div>
-              <h2 className="font-display text-lg font-semibold text-neutral-900 dark:text-[#ececec] truncate mt-0.5">
+              <h2 className="font-display text-lg font-semibold text-neutral-900 dark:text-[#F4F4F5] truncate mt-0.5">
                 {isNew ? 'Buat Dokumen SOP Baru' : title}
               </h2>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
               {!isNew && (
-                <div className="flex items-center gap-1 p-1 bg-neutral-100 dark:bg-[#212121] border border-neutral-200 dark:border-white/[0.08] rounded-lg">
+                <div className="flex items-center gap-1 p-1 bg-[var(--surface-3)] dark:bg-[#131316] border border-[var(--border)] dark:border-[#33333A] rounded-lg">
                   <button
                     type="button"
                     onClick={() => setMode('read')}
                     className={`px-3 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                       mode === 'read'
-                        ? 'bg-white dark:bg-[#2f2f2f] text-neutral-900 dark:text-[#ececec] shadow-sm'
-                        : 'text-neutral-600 dark:text-[#a0a0a0] hover:text-neutral-900 dark:hover:text-[#ececec]'
+                        ? 'bg-[var(--surface)] dark:bg-[#25252A] text-neutral-900 dark:text-[#F4F4F5] dark:shadow-sm'
+                        : 'text-neutral-600 dark:text-[#A1A1AA] hover:text-neutral-900 dark:hover:text-[#F4F4F5]'
                     }`}
                   >
                     Baca
@@ -913,8 +918,8 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                     onClick={() => setMode('flowchart')}
                     className={`inline-flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                       mode === 'flowchart'
-                        ? 'bg-white dark:bg-[#2f2f2f] text-neutral-900 dark:text-[#ececec] shadow-sm'
-                        : 'text-neutral-600 dark:text-[#a0a0a0] hover:text-neutral-900 dark:hover:text-[#ececec]'
+                        ? 'bg-[var(--surface)] dark:bg-[#25252A] text-neutral-900 dark:text-[#F4F4F5] dark:shadow-sm'
+                        : 'text-neutral-600 dark:text-[#A1A1AA] hover:text-neutral-900 dark:hover:text-[#F4F4F5]'
                     }`}
                   >
                     <GitBranch className="w-3 h-3" />
@@ -926,8 +931,8 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                       onClick={() => setMode('edit')}
                       className={`inline-flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                         mode === 'edit'
-                          ? 'bg-white dark:bg-[#2f2f2f] text-neutral-900 dark:text-[#ececec] shadow-sm'
-                          : 'text-neutral-600 dark:text-[#a0a0a0] hover:text-neutral-900 dark:hover:text-[#ececec]'
+                          ? 'bg-[var(--surface)] dark:bg-[#25252A] text-neutral-900 dark:text-[#F4F4F5] dark:shadow-sm'
+                          : 'text-neutral-600 dark:text-[#A1A1AA] hover:text-neutral-900 dark:hover:text-[#F4F4F5]'
                       }`}
                     >
                       <Edit3 className="w-3 h-3" />
@@ -939,8 +944,8 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                     onClick={() => setMode('history')}
                     className={`inline-flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                       mode === 'history'
-                        ? 'bg-white dark:bg-[#2f2f2f] text-neutral-900 dark:text-[#ececec] shadow-sm'
-                        : 'text-neutral-600 dark:text-[#a0a0a0] hover:text-neutral-900 dark:hover:text-[#ececec]'
+                        ? 'bg-[var(--surface)] dark:bg-[#25252A] text-neutral-900 dark:text-[#F4F4F5] dark:shadow-sm'
+                        : 'text-neutral-600 dark:text-[#A1A1AA] hover:text-neutral-900 dark:hover:text-[#F4F4F5]'
                     }`}
                   >
                     <History className="w-3 h-3" />
@@ -951,7 +956,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="p-2 text-neutral-400 dark:text-[#7a7a7a] hover:text-neutral-700 dark:hover:text-[#ececec] rounded-lg hover:bg-neutral-100 dark:hover:bg-[#2a2a2a] transition-colors cursor-pointer"
+                className="p-2 text-neutral-400 dark:text-[#A1A1AA] hover:text-neutral-700 dark:hover:text-[#F4F4F5] rounded-lg hover:bg-[var(--surface-2)] dark:hover:bg-[#2F2F36] transition-colors cursor-pointer"
                 aria-label="Tutup"
               >
                 <X className="w-5 h-5" />
@@ -969,7 +974,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
           }`}
         >
           {errorMsg && (
-            <div className="p-3 bg-rose-50 dark:bg-rose-950/45 border border-rose-200 dark:border-rose-800/70 rounded-lg text-xs text-rose-800 dark:text-rose-200">
+            <div className="p-3 bg-[var(--danger-soft)] dark:bg-rose-950/45 border border-rose-200 dark:border-rose-800/70 rounded-lg text-xs text-rose-800 dark:text-rose-200">
               {errorMsg}
             </div>
           )}
@@ -982,7 +987,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setFocusReading(true)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-800 dark:text-[#ececec] bg-neutral-100 dark:bg-[#2a2a2a] hover:bg-neutral-200 dark:hover:bg-[#343434] border border-neutral-200 dark:border-white/[0.08] rounded-md transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-800 dark:text-[#F4F4F5] bg-[var(--surface-3)] dark:bg-[#25252A] hover:bg-neutral-200 dark:hover:bg-[#2F2F36] border border-[var(--border)] dark:border-[#33333A] rounded-md transition-colors cursor-pointer"
                     >
                       <BookOpen className="w-3.5 h-3.5" />
                       <span>Mode Fokus Baca</span>
@@ -990,7 +995,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                     <button
                       type="button"
                       onClick={handleCopySopText}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-[#e0e0e0] bg-neutral-100 dark:bg-[#2a2a2a] hover:bg-neutral-200 dark:hover:bg-[#343434] rounded-md transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-[#F4F4F5] bg-[var(--surface-3)] dark:bg-[#25252A] hover:bg-neutral-200 dark:hover:bg-[#2F2F36] rounded-md transition-colors cursor-pointer"
                     >
                       {copiedSop ? (
                         <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -1000,28 +1005,28 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                       <span>{copiedSop ? 'Teks SOP Tersalin' : 'Salin Teks SOP'}</span>
                     </button>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-neutral-50 dark:bg-[#2a2a2a] border border-neutral-200 dark:border-white/[0.08] rounded-xl text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-[var(--surface-2)] dark:bg-[#25252A] border border-[var(--border)] dark:border-[#33333A] rounded-xl text-xs">
                     <div>
-                      <span className="block text-neutral-500 dark:text-[#8e8e8e]">Divisi / Departemen</span>
-                      <span className="font-medium text-neutral-900 dark:text-[#ececec]">
+                      <span className="block text-neutral-500 dark:text-[#A1A1AA]">Divisi / Departemen</span>
+                      <span className="font-medium text-neutral-900 dark:text-[#F4F4F5]">
                         {sop.divisionName} · {sop.departmentName}
                       </span>
                     </div>
                     <div>
-                      <span className="block text-neutral-500 dark:text-[#8e8e8e]">Pemilik Proses (Owner)</span>
-                      <span className="font-medium text-neutral-900 dark:text-[#ececec]">
+                      <span className="block text-neutral-500 dark:text-[#A1A1AA]">Pemilik Proses (Owner)</span>
+                      <span className="font-medium text-neutral-900 dark:text-[#F4F4F5]">
                         {sop.ownerName || 'Belum ditetapkan'}
                       </span>
                     </div>
                     <div>
-                      <span className="block text-neutral-500 dark:text-[#8e8e8e]">Tanggal Berlaku</span>
-                      <span className="font-mono font-medium text-neutral-900 dark:text-[#ececec] tabular-nums">
+                      <span className="block text-neutral-500 dark:text-[#A1A1AA]">Tanggal Berlaku</span>
+                      <span className="font-mono font-medium text-neutral-900 dark:text-[#F4F4F5] tabular-nums">
                         {sop.effectiveDate || '-'}
                       </span>
                     </div>
                     <div>
-                      <span className="block text-neutral-500 dark:text-[#8e8e8e]">Review Berikutnya</span>
-                      <span className="font-mono font-medium text-neutral-900 dark:text-[#ececec] tabular-nums">
+                      <span className="block text-neutral-500 dark:text-[#A1A1AA]">Review Berikutnya</span>
+                      <span className="font-mono font-medium text-neutral-900 dark:text-[#F4F4F5] tabular-nums">
                         {sop.nextReviewDate || '-'}
                       </span>
                     </div>
@@ -1029,22 +1034,22 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
 
                   <div className="space-y-4">
                     <div>
-                      <h3 className="text-xs font-semibold text-neutral-500 dark:text-[#8e8e8e] uppercase tracking-wider mb-1">
+                      <h3 className="text-xs font-semibold text-neutral-500 dark:text-[#A1A1AA] uppercase tracking-wider mb-1">
                         Tujuan
                       </h3>
-                      <p className="text-sm text-neutral-800 dark:text-[#e0e0e0] leading-relaxed">{sop.purpose || '-'}</p>
+                      <p className="text-sm text-neutral-800 dark:text-[#F4F4F5] leading-relaxed">{sop.purpose || '-'}</p>
                     </div>
                     <div>
-                      <h3 className="text-xs font-semibold text-neutral-500 dark:text-[#8e8e8e] uppercase tracking-wider mb-1">
+                      <h3 className="text-xs font-semibold text-neutral-500 dark:text-[#A1A1AA] uppercase tracking-wider mb-1">
                         Ruang Lingkup
                       </h3>
-                      <p className="text-sm text-neutral-800 dark:text-[#e0e0e0] leading-relaxed">{sop.scope || '-'}</p>
+                      <p className="text-sm text-neutral-800 dark:text-[#F4F4F5] leading-relaxed">{sop.scope || '-'}</p>
                     </div>
                     <div>
-                      <h3 className="text-xs font-semibold text-neutral-500 dark:text-[#8e8e8e] uppercase tracking-wider mb-1">
+                      <h3 className="text-xs font-semibold text-neutral-500 dark:text-[#A1A1AA] uppercase tracking-wider mb-1">
                         Peran Terkait
                       </h3>
-                      <p className="text-sm text-neutral-800 dark:text-[#e0e0e0]">
+                      <p className="text-sm text-neutral-800 dark:text-[#F4F4F5]">
                         {sop.relatedRoles.length ? sop.relatedRoles.join(' · ') : '-'}
                       </p>
                     </div>
@@ -1053,15 +1058,15 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
               )}
 
               {isFocusReading && (
-                <header className="pb-6 border-b border-neutral-200 dark:border-white/[0.08] space-y-2">
-                  <p className="font-mono text-xs font-semibold text-neutral-700 dark:text-[#c4c4c4] tracking-wide">
+                <header className="pb-6 border-b border-[var(--border)] dark:border-[#33333A] space-y-2">
+                  <p className="font-mono text-xs font-semibold text-neutral-700 dark:text-[#A1A1AA] tracking-wide">
                     {sop.docNumber} · v{sop.version}
                   </p>
-                  <h1 className="font-display text-2xl font-bold text-neutral-900 dark:text-[#ececec] leading-snug">
+                  <h1 className="font-display text-2xl font-bold text-neutral-900 dark:text-[#F4F4F5] leading-snug">
                     {sop.title}
                   </h1>
                   {sop.purpose && (
-                    <p className="text-sm text-neutral-600 dark:text-[#a0a0a0] leading-relaxed pt-1">{sop.purpose}</p>
+                    <p className="text-sm text-neutral-600 dark:text-[#A1A1AA] leading-relaxed pt-1">{sop.purpose}</p>
                   )}
                 </header>
               )}
@@ -1070,11 +1075,11 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                 className={
                   isFocusReading
                     ? 'space-y-7'
-                    : 'space-y-4 pt-4 border-t border-neutral-200 dark:border-white/[0.08]'
+                    : 'space-y-4 pt-4 border-t border-[var(--border)] dark:border-[#33333A]'
                 }
               >
                 {!isFocusReading && (
-                  <h3 className="font-display text-base font-semibold text-neutral-900 dark:text-[#ececec]">
+                  <h3 className="font-display text-base font-semibold text-neutral-900 dark:text-[#F4F4F5]">
                     Langkah-Langkah & Ketentuan
                   </h3>
                 )}
@@ -1087,23 +1092,23 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                       key={sec.id || idx}
                       className={
                         isFocusReading
-                          ? `pb-7 border-b border-neutral-200/80 dark:border-white/[0.08] last:border-b-0 space-y-3 ${
+                          ? `pb-7 border-b border-[var(--border)]/80 dark:border-[#33333A] last:border-b-0 space-y-3 ${
                               isHighlighted
-                                ? 'border-l-2 border-l-neutral-900 dark:border-l-white pl-4 bg-neutral-50 dark:bg-[#2a2a2a] rounded-r-lg py-3 pr-3'
+                                ? 'border-l-2 border-l-neutral-900 dark:border-l-white pl-4 bg-[var(--surface-2)] dark:bg-[#25252A] rounded-r-lg py-3 pr-3'
                                 : ''
                             }`
                           : `p-4 rounded-xl border ${
                               isHighlighted
-                                ? 'bg-neutral-100 dark:bg-[#2f2f2f] border-neutral-400 dark:border-white/25'
-                                : 'bg-white dark:bg-[#262626] border-neutral-200 dark:border-white/[0.08]'
+                                ? 'bg-[var(--surface-3)] dark:bg-[#25252A] border-neutral-400 dark:border-white/25'
+                                : 'bg-[var(--surface)] dark:bg-[#1C1C20] border-[var(--border)] dark:border-[#33333A]'
                             } space-y-2`
                       }
                     >
                       <h4
                         className={
                           isFocusReading
-                            ? 'font-display text-base font-semibold text-neutral-900 dark:text-[#ececec]'
-                            : 'font-display text-sm font-semibold text-neutral-900 dark:text-[#ececec]'
+                            ? 'font-display text-base font-semibold text-neutral-900 dark:text-[#F4F4F5]'
+                            : 'font-display text-sm font-semibold text-neutral-900 dark:text-[#F4F4F5]'
                         }
                       >
                         {sec.order}. {sec.title}
@@ -1111,16 +1116,16 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                       <div
                         className={
                           isFocusReading
-                            ? 'text-[15px] text-neutral-800 dark:text-[#e0e0e0] leading-[1.85] whitespace-pre-line'
-                            : 'text-sm text-neutral-700 dark:text-[#d4d4d4] leading-relaxed whitespace-pre-line'
+                            ? 'text-[15px] text-neutral-800 dark:text-[#F4F4F5] leading-[1.85] whitespace-pre-line'
+                            : 'text-sm text-neutral-700 dark:text-[#F4F4F5] leading-relaxed whitespace-pre-line'
                         }
                       >
                         {sec.content}
                       </div>
                       {sec.images && sec.images.length > 0 && (
                         <div className="pt-2 space-y-2">
-                          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-600 dark:text-[#a0a0a0]">
-                            <ImageIcon className="w-3.5 h-3.5 text-neutral-500 dark:text-[#8e8e8e]" />
+                          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-600 dark:text-[#A1A1AA]">
+                            <ImageIcon className="w-3.5 h-3.5 text-neutral-500 dark:text-[#A1A1AA]" />
                             <span>Gambar Panduan Modul ({sec.images.length})</span>
                           </span>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -1134,16 +1139,16 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                                     caption: `${sec.title} · ${img.caption}`,
                                   })
                                 }
-                                className="group text-left bg-neutral-50 dark:bg-[#2a2a2a] border border-neutral-200 dark:border-white/[0.08] hover:border-neutral-400 dark:hover:border-white/25 rounded-lg overflow-hidden transition-colors cursor-pointer"
+                                className="group text-left bg-[var(--surface-2)] dark:bg-[#25252A] border border-[var(--border)] dark:border-[#33333A] hover:border-neutral-400 dark:hover:border-white/25 rounded-lg overflow-hidden transition-colors cursor-pointer"
                               >
-                                <div className="aspect-[16/10] bg-white overflow-hidden border-b border-neutral-200 dark:border-white/[0.08] p-1">
+                                <div className="aspect-[16/10] bg-[var(--surface)] overflow-hidden border-b border-[var(--border)] dark:border-[#33333A] p-1">
                                   <img
                                     src={img.dataUrl}
                                     alt={img.caption || sec.title}
                                     className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform"
                                   />
                                 </div>
-                                <p className="px-2.5 py-1.5 text-[11px] font-medium text-neutral-700 dark:text-[#d4d4d4] truncate">
+                                <p className="px-2.5 py-1.5 text-[11px] font-medium text-neutral-700 dark:text-[#F4F4F5] truncate">
                                   {img.caption || sec.title}
                                 </p>
                               </button>
@@ -1157,7 +1162,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
               </div>
 
               {isFocusReading && (
-                <div className="pt-4 border-t border-neutral-200 dark:border-white/[0.08] flex items-center justify-between text-xs text-neutral-500 dark:text-[#8e8e8e]">
+                <div className="pt-4 border-t border-[var(--border)] dark:border-[#33333A] flex items-center justify-between text-xs text-neutral-500 dark:text-[#A1A1AA]">
                   <span>Akhir dokumen ({sop.sections.length} bagian)</span>
                   <div className="flex items-center gap-2">
                     <button
@@ -1165,7 +1170,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                       onClick={() =>
                         bodyScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
                       }
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-neutral-700 dark:text-[#e0e0e0] hover:text-neutral-900 dark:hover:text-white bg-neutral-100 dark:bg-[#2a2a2a] hover:bg-neutral-200 dark:hover:bg-[#343434] rounded-md cursor-pointer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-neutral-700 dark:text-[#F4F4F5] hover:text-neutral-900 dark:hover:text-white bg-[var(--surface-3)] dark:bg-[#25252A] hover:bg-neutral-200 dark:hover:bg-[#2F2F36] rounded-md cursor-pointer"
                     >
                       <ArrowUp className="w-3.5 h-3.5" />
                       <span>Kembali ke Atas</span>
@@ -1173,7 +1178,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setFocusReading(false)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-neutral-800 dark:text-[#ececec] bg-neutral-100 dark:bg-[#2a2a2a] hover:bg-neutral-200 dark:hover:bg-[#343434] border border-neutral-200 dark:border-white/[0.08] rounded-md cursor-pointer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-neutral-800 dark:text-[#F4F4F5] bg-[var(--surface-3)] dark:bg-[#25252A] hover:bg-neutral-200 dark:hover:bg-[#2F2F36] border border-[var(--border)] dark:border-[#33333A] rounded-md cursor-pointer"
                     >
                       <Minimize2 className="w-3.5 h-3.5" />
                       <span>Tampilkan Info Lengkap</span>
@@ -1183,27 +1188,27 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
               )}
 
               {!isFocusReading && sop.attachments.length > 0 && (
-                <div className="pt-4 border-t border-neutral-200 dark:border-white/[0.08] space-y-2">
-                  <h3 className="font-display text-sm font-semibold text-neutral-900 dark:text-[#ececec]">
+                <div className="pt-4 border-t border-[var(--border)] dark:border-[#33333A] space-y-2">
+                  <h3 className="font-display text-sm font-semibold text-neutral-900 dark:text-[#F4F4F5]">
                     Formulir & Lampiran
                   </h3>
                   <div className="space-y-2">
                     {sop.attachments.map((att) => (
                       <div
                         key={att.id}
-                        className="p-3 bg-neutral-50 dark:bg-[#2a2a2a] border border-neutral-200 dark:border-white/[0.08] rounded-lg text-xs space-y-1"
+                        className="p-3 bg-[var(--surface-2)] dark:bg-[#25252A] border border-[var(--border)] dark:border-[#33333A] rounded-lg text-xs space-y-1"
                       >
-                        <div className="flex items-center justify-between gap-2 font-medium text-neutral-900 dark:text-[#ececec]">
+                        <div className="flex items-center justify-between gap-2 font-medium text-neutral-900 dark:text-[#F4F4F5]">
                           <span className="flex items-center gap-1.5">
-                            <Paperclip className="w-3.5 h-3.5 text-neutral-500 dark:text-[#8e8e8e]" />
+                            <Paperclip className="w-3.5 h-3.5 text-neutral-500 dark:text-[#A1A1AA]" />
                             {att.name}
                           </span>
-                          <span className="font-mono text-neutral-500 dark:text-[#8e8e8e]">
+                          <span className="font-mono text-neutral-500 dark:text-[#A1A1AA]">
                             {att.fileType} · {att.sizeLabel}
                           </span>
                         </div>
                         {att.extractedText && (
-                          <p className="text-neutral-600 dark:text-[#a0a0a0] line-clamp-3">{att.extractedText}</p>
+                          <p className="text-neutral-600 dark:text-[#A1A1AA] line-clamp-3">{att.extractedText}</p>
                         )}
                         {att.visualPages && att.visualPages.length > 0 && (
                           <div className="pt-2 grid grid-cols-2 sm:grid-cols-3 gap-2.5">
@@ -1214,16 +1219,16 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                                 onClick={() =>
                                   setZoomedPage({ url: vp.dataUrl, caption: vp.caption })
                                 }
-                                className="group text-left bg-white dark:bg-[#1e1e1e] border border-neutral-200 dark:border-white/[0.08] hover:border-neutral-400 dark:hover:border-white/25 rounded-md overflow-hidden transition-colors cursor-pointer"
+                                className="group text-left bg-[var(--surface)] dark:bg-[#1C1C20] border border-[var(--border)] dark:border-[#33333A] hover:border-neutral-400 dark:hover:border-white/25 rounded-md overflow-hidden transition-colors cursor-pointer"
                               >
-                                <div className="aspect-[4/3] bg-white overflow-hidden border-b border-neutral-200 dark:border-white/[0.08]">
+                                <div className="aspect-[4/3] bg-[var(--surface)] overflow-hidden border-b border-[var(--border)] dark:border-[#33333A]">
                                   <img
                                     src={vp.dataUrl}
                                     alt={vp.caption}
                                     className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform"
                                   />
                                 </div>
-                                <p className="p-1.5 text-[11px] text-neutral-700 dark:text-[#d4d4d4] line-clamp-2">
+                                <p className="p-1.5 text-[11px] text-neutral-700 dark:text-[#F4F4F5] line-clamp-2">
                                   {vp.caption}
                                 </p>
                               </button>
@@ -1240,23 +1245,23 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
 
           {mode === 'flowchart' && sop && (
             <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-neutral-200 dark:border-white/[0.08]">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[var(--border)] dark:border-[#33333A]">
                 <div>
-                  <h3 className="font-display text-sm font-semibold text-neutral-900 dark:text-[#ececec]">
+                  <h3 className="font-display text-sm font-semibold text-neutral-900 dark:text-[#F4F4F5]">
                     Flowchart Otomatis Langkah Prosedur
                   </h3>
-                  <p className="text-xs text-neutral-500 dark:text-[#8e8e8e]">
+                  <p className="text-xs text-neutral-500 dark:text-[#A1A1AA]">
                     Dibangkitkan otomatis dari struktur bagian dan aturan keputusan pada {sop.docNumber}.
                   </p>
                 </div>
-                <span className="text-xs text-neutral-500 dark:text-[#8e8e8e] font-mono tabular-nums">
+                <span className="text-xs text-neutral-500 dark:text-[#A1A1AA] font-mono tabular-nums">
                   {sop.sections.length} Tahap
                 </span>
               </div>
 
               <div className="max-w-2xl mx-auto flex flex-col items-center py-2">
                 {/* Start Node */}
-                <div className="px-5 py-2 rounded-full border border-emerald-300 dark:border-emerald-700/70 bg-emerald-50 dark:bg-emerald-950/50 text-xs font-semibold text-emerald-900 dark:text-emerald-200">
+                <div className="px-5 py-2 rounded-full border border-emerald-300 dark:border-emerald-700/70 bg-[var(--success-soft)] dark:bg-emerald-950/50 text-xs font-semibold text-emerald-900 dark:text-emerald-200">
                   Mulai · {sop.relatedRoles[0] || 'Pemohon / Pelaksana'}
                 </div>
 
@@ -1271,22 +1276,22 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
 
                   return (
                     <React.Fragment key={sec.id || secIdx}>
-                      <div className="py-1.5 text-neutral-400 dark:text-[#7a7a7a]">
+                      <div className="py-1.5 text-neutral-400 dark:text-[#A1A1AA]">
                         <ArrowDown className="w-4 h-4" />
                       </div>
-                      <div className="w-full bg-white dark:bg-[#262626] border border-neutral-200 dark:border-white/[0.08] rounded-xl p-4 space-y-3">
+                      <div className="w-full bg-[var(--surface)] dark:bg-[#1C1C20] border border-[var(--border)] dark:border-[#33333A] rounded-xl p-4 space-y-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
-                            <span className="font-mono text-xs font-bold text-neutral-900 dark:text-[#ececec] tabular-nums">
+                            <span className="font-mono text-xs font-bold text-neutral-900 dark:text-[#F4F4F5] tabular-nums">
                               TAHAP {String(sec.order || secIdx + 1).padStart(2, '0')}
                             </span>
                             <span className="text-neutral-300 dark:text-[#555555]">·</span>
-                            <h4 className="font-display text-sm font-semibold text-neutral-900 dark:text-[#ececec]">
+                            <h4 className="font-display text-sm font-semibold text-neutral-900 dark:text-[#F4F4F5]">
                               {sec.title}
                             </h4>
                           </div>
                           {matchedRoles.length > 0 && (
-                            <span className="text-xs text-neutral-500 dark:text-[#8e8e8e]">
+                            <span className="text-xs text-neutral-500 dark:text-[#A1A1AA]">
                               PIC: {matchedRoles.join(', ')}
                             </span>
                           )}
@@ -1302,11 +1307,11 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                                 key={stepIdx}
                                 className={`p-2.5 rounded-lg border text-xs leading-relaxed flex items-start gap-2.5 ${
                                   isDecision
-                                    ? 'bg-amber-50/70 dark:bg-amber-950/35 border-amber-200 dark:border-amber-800/60 text-neutral-800 dark:text-[#e0e0e0]'
-                                    : 'bg-neutral-50 dark:bg-[#1e1e1e] border-neutral-200 dark:border-white/[0.08] text-neutral-700 dark:text-[#d4d4d4]'
+                                    ? 'bg-[var(--warning-soft)] dark:bg-amber-950/35 border-amber-200 dark:border-amber-800/60 text-neutral-800 dark:text-[#F4F4F5]'
+                                    : 'bg-[var(--surface-2)] dark:bg-[#1C1C20] border-[var(--border)] dark:border-[#33333A] text-neutral-700 dark:text-[#F4F4F5]'
                                 }`}
                               >
-                                <span className="font-mono font-semibold text-neutral-500 dark:text-[#8e8e8e] tabular-nums shrink-0 mt-0.5">
+                                <span className="font-mono font-semibold text-neutral-500 dark:text-[#A1A1AA] tabular-nums shrink-0 mt-0.5">
                                   {secIdx + 1}.{stepIdx + 1}
                                 </span>
                                 <span className="min-w-0">
@@ -1326,10 +1331,10 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                   );
                 })}
 
-                <div className="py-1.5 text-neutral-400 dark:text-[#7a7a7a]">
+                <div className="py-1.5 text-neutral-400 dark:text-[#A1A1AA]">
                   <ArrowDown className="w-4 h-4" />
                 </div>
-                <div className="px-5 py-2 rounded-full border border-neutral-300 dark:border-white/[0.12] bg-neutral-100 dark:bg-[#2a2a2a] text-xs font-semibold text-neutral-800 dark:text-[#ececec]">
+                <div className="px-5 py-2 rounded-full border border-[var(--border-strong)] dark:border-[#33333A] bg-[var(--surface-3)] dark:bg-[#25252A] text-xs font-semibold text-neutral-800 dark:text-[#F4F4F5]">
                   Selesai · Terdokumentasi ({sop.docNumber} v{sop.version})
                 </div>
               </div>
@@ -1338,37 +1343,37 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
 
           {mode === 'history' && sop && (
             <div className="space-y-3">
-              <p className="text-xs text-neutral-600 dark:text-[#a0a0a0]">
+              <p className="text-xs text-neutral-600 dark:text-[#A1A1AA]">
                 Riwayat perubahan dokumen. Admin Divisi atau Super Admin dapat mengembalikan (rollback) ke versi sebelumnya.
               </p>
               {loadingVersions ? (
-                <div className="p-4 text-xs text-neutral-500 dark:text-[#8e8e8e]">Memuat riwayat versi...</div>
+                <div className="p-4 text-xs text-neutral-500 dark:text-[#A1A1AA]">Memuat riwayat versi...</div>
               ) : versions.length === 0 ? (
-                <div className="p-4 text-xs text-neutral-500 dark:text-[#8e8e8e]">Belum ada riwayat versi tersimpan.</div>
+                <div className="p-4 text-xs text-neutral-500 dark:text-[#A1A1AA]">Belum ada riwayat versi tersimpan.</div>
               ) : (
                 versions.map((v) => (
                   <div
                     key={v.id}
-                    className="p-4 bg-white dark:bg-[#262626] border border-neutral-200 dark:border-white/[0.08] rounded-xl flex items-center justify-between gap-4"
+                    className="p-4 bg-[var(--surface)] dark:bg-[#1C1C20] border border-[var(--border)] dark:border-[#33333A] rounded-xl flex items-center justify-between gap-4"
                   >
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 text-xs">
-                        <span className="font-mono font-semibold text-neutral-900 dark:text-[#ececec] tabular-nums">
+                        <span className="font-mono font-semibold text-neutral-900 dark:text-[#F4F4F5] tabular-nums">
                           v{v.version}
                         </span>
-                        <span className="text-neutral-400 dark:text-[#7a7a7a]">·</span>
-                        <span className="font-medium text-neutral-700 dark:text-[#c4c4c4]">{v.status}</span>
-                        <span className="text-neutral-400 dark:text-[#7a7a7a]">·</span>
-                        <span className="text-neutral-600 dark:text-[#a0a0a0]">Oleh {v.editedByName}</span>
+                        <span className="text-neutral-400 dark:text-[#A1A1AA]">·</span>
+                        <span className="font-medium text-neutral-700 dark:text-[#A1A1AA]">{v.status}</span>
+                        <span className="text-neutral-400 dark:text-[#A1A1AA]">·</span>
+                        <span className="text-neutral-600 dark:text-[#A1A1AA]">Oleh {v.editedByName}</span>
                       </div>
-                      <p className="text-sm text-neutral-800 dark:text-[#e0e0e0]">{v.changeNote}</p>
+                      <p className="text-sm text-neutral-800 dark:text-[#F4F4F5]">{v.changeNote}</p>
                     </div>
                     {canEdit && v.version !== sop.version && (
                       <button
                         type="button"
                         disabled={saving}
                         onClick={() => handleRollback(v)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-800 dark:text-[#ececec] bg-neutral-100 dark:bg-[#2f2f2f] hover:bg-neutral-200 dark:hover:bg-[#3a3a3a] rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-800 dark:text-[#F4F4F5] bg-[var(--surface-3)] dark:bg-[#25252A] hover:bg-neutral-200 dark:hover:bg-[#2F2F36] rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                         <span>Rollback ke v{v.version}</span>
@@ -1383,15 +1388,15 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
           {mode === 'edit' && (
             <div className="space-y-5">
               {revisionContext?.feedbackLogs && revisionContext.feedbackLogs.length > 0 && (
-                <div className="p-4 bg-neutral-50 dark:bg-[#2a2a2a] border border-neutral-200 dark:border-white/[0.1] rounded-xl space-y-3">
+                <div className="p-4 bg-[var(--surface-2)] dark:bg-[#25252A] border border-[var(--border)] dark:border-[#33333A] rounded-xl space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-start gap-2.5 min-w-0">
-                      <Sparkles className="w-4 h-4 text-neutral-700 dark:text-[#ececec] shrink-0 mt-0.5" />
+                      <Sparkles className="w-4 h-4 text-neutral-700 dark:text-[#F4F4F5] shrink-0 mt-0.5" />
                       <div className="min-w-0">
-                        <h3 className="text-xs font-bold text-neutral-900 dark:text-[#ececec]">
+                        <h3 className="text-xs font-bold text-neutral-900 dark:text-[#F4F4F5]">
                           Asisten AI Revisi dari Umpan Balik Karyawan ({revisionContext.feedbackLogs.length} laporan)
                         </h3>
-                        <p className="text-[11px] text-neutral-600 dark:text-[#a0a0a0] mt-0.5">
+                        <p className="text-[11px] text-neutral-600 dark:text-[#A1A1AA] mt-0.5">
                           AI akan menyempurnakan pasal terkait tanpa menghapus foto modul yang sudah terpasang. Laporan umpan balik otomatis ditandai selesai saat SOP disimpan untuk Review/Persetujuan.
                         </p>
                       </div>
@@ -1417,20 +1422,20 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                     {revisionContext.feedbackLogs.map((log) => (
                       <div
                         key={log.id}
-                        className="px-2.5 py-2 bg-white dark:bg-[#1e1e1e] border border-neutral-200 dark:border-white/[0.08] rounded-lg text-[11px] space-y-0.5"
+                        className="px-2.5 py-2 bg-[var(--surface)] dark:bg-[#1C1C20] border border-[var(--border)] dark:border-[#33333A] rounded-lg text-[11px] space-y-0.5"
                       >
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="font-semibold text-rose-700 dark:text-rose-400">
                             {log.feedback === 'outdated' ? 'SOP Sudah Usang' : 'Tidak Akurat'}
                           </span>
-                          <span className="text-neutral-400 dark:text-[#7a7a7a]">·</span>
-                          <span className="text-neutral-600 dark:text-[#a0a0a0]">{log.userName}</span>
+                          <span className="text-neutral-400 dark:text-[#A1A1AA]">·</span>
+                          <span className="text-neutral-600 dark:text-[#A1A1AA]">{log.userName}</span>
                         </div>
-                        <p className="font-medium text-neutral-900 dark:text-[#ececec]">
+                        <p className="font-medium text-neutral-900 dark:text-[#F4F4F5]">
                           Pertanyaan: &ldquo;{log.question}&rdquo;
                         </p>
                         {log.feedbackNote && (
-                          <p className="text-neutral-600 dark:text-[#c4c4c4]">
+                          <p className="text-neutral-600 dark:text-[#A1A1AA]">
                             Catatan: {log.feedbackNote}
                           </p>
                         )}
@@ -1441,7 +1446,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
               )}
 
               {revisionBanner && (
-                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/45 border border-emerald-200 dark:border-emerald-800/70 rounded-lg flex items-start justify-between gap-3 text-xs text-emerald-900 dark:text-emerald-200">
+                <div className="p-3 bg-[var(--success-soft)] dark:bg-emerald-950/45 border border-emerald-200 dark:border-emerald-800/70 rounded-lg flex items-start justify-between gap-3 text-xs text-emerald-900 dark:text-emerald-200">
                   <div className="flex items-start gap-2 min-w-0">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                     <p className="leading-relaxed">{revisionBanner}</p>
@@ -1459,18 +1464,18 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">
+                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">
                     Nomor Dokumen
                   </label>
                   <input
                     type="text"
                     value={docNumber}
                     onChange={(e) => setDocNumber(e.target.value)}
-                    className="w-full px-3 py-2 text-sm font-mono bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] border border-neutral-200 dark:border-white/[0.12] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
+                    className="w-full px-3 py-2 text-sm font-mono bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">
+                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">
                     Judul SOP
                   </label>
                   <input
@@ -1478,19 +1483,19 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="Contoh: Prosedur Pengajuan Reimbursement Perjalanan Dinas"
-                    className="w-full px-3 py-2 text-sm bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] placeholder:text-neutral-400 dark:placeholder:text-[#7a7a7a] border border-neutral-200 dark:border-white/[0.12] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
+                    className="w-full px-3 py-2 text-sm bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] placeholder:text-[var(--text-subtle)] dark:placeholder:text-[#6B7280] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">Divisi</label>
+                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">Divisi</label>
                   <select
                     value={divisionId}
                     onChange={(e) => handleDivisionChange(e.target.value)}
                     disabled={!isNew}
-                    className="w-full px-3 py-2 text-sm border border-neutral-200 dark:border-white/[0.12] rounded-lg bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] disabled:bg-neutral-100 dark:disabled:bg-[#2a2a2a] dark:disabled:text-[#8e8e8e]"
+                    className="w-full px-3 py-2 text-sm border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] disabled:bg-[var(--surface-3)] dark:disabled:bg-[#2a2a2a] dark:disabled:text-[#8e8e8e]"
                   >
                     {divisions.length === 0 ? (
                       <option value="">Otomatis: Operasional Umum</option>
@@ -1504,13 +1509,13 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">
+                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">
                     Departemen
                   </label>
                   <select
                     value={departmentId}
                     onChange={(e) => setDepartmentId(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-neutral-200 dark:border-white/[0.12] rounded-lg bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec]"
+                    className="w-full px-3 py-2 text-sm border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5]"
                   >
                     {filteredDepts.length === 0 ? (
                       <option value="">Otomatis: Umum</option>
@@ -1524,13 +1529,13 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">
+                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">
                     Pemilik Proses (Owner)
                   </label>
                   <select
                     value={ownerUid}
                     onChange={(e) => setOwnerUid(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-neutral-200 dark:border-white/[0.12] rounded-lg bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec]"
+                    className="w-full px-3 py-2 text-sm border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5]"
                   >
                     <option value="">-- Belum ditetapkan --</option>
                     {directory.map((m) => (
@@ -1543,39 +1548,39 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
               </div>
 
               {isNew && (divisions.length === 0 || filteredDepts.length === 0) && (
-                <div className="p-3 bg-neutral-50 dark:bg-[#2a2a2a] border border-neutral-200 dark:border-white/[0.08] rounded-lg text-xs text-neutral-700 dark:text-[#d4d4d4]">
+                <div className="p-3 bg-[var(--surface-2)] dark:bg-[#25252A] border border-[var(--border)] dark:border-[#33333A] rounded-lg text-xs text-neutral-700 dark:text-[#F4F4F5]">
                   {user.role === 'Super Admin' || user.role === 'Admin Divisi'
-                    ? 'Divisi/Departemen pada pilihan ini belum terdaftar. Saat Anda menyimpan, SOP Brain akan membuatnya secara otomatis.'
+                    ? 'Divisi/Departemen pada pilihan ini belum terdaftar. Saat Anda menyimpan, NARA AI akan membuatnya secara otomatis.'
                     : 'Divisi/Departemen belum tersedia. Hubungi Super Admin untuk menambahkan Divisi terlebih dahulu.'}
                 </div>
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">Tujuan</label>
+                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">Tujuan</label>
                   <textarea
                     rows={3}
                     value={purpose}
                     onChange={(e) => setPurpose(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] border border-neutral-200 dark:border-white/[0.12] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
+                    className="w-full px-3 py-2 text-sm bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">
+                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">
                     Ruang Lingkup
                   </label>
                   <textarea
                     rows={3}
                     value={scope}
                     onChange={(e) => setScope(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] border border-neutral-200 dark:border-white/[0.12] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
+                    className="w-full px-3 py-2 text-sm bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">
+                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">
                     Peran Terkait (pisahkan koma)
                   </label>
                   <input
@@ -1583,41 +1588,41 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                     value={relatedRolesText}
                     onChange={(e) => setRelatedRolesText(e.target.value)}
                     placeholder="Pemohon, Manager, Finance AP"
-                    className="w-full px-3 py-2 text-sm bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] placeholder:text-neutral-400 dark:placeholder:text-[#7a7a7a] border border-neutral-200 dark:border-white/[0.12] rounded-lg"
+                    className="w-full px-3 py-2 text-sm bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] placeholder:text-[var(--text-subtle)] dark:placeholder:text-[#6B7280] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">
+                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">
                     Tanggal Berlaku
                   </label>
                   <input
                     type="date"
                     value={effectiveDate}
                     onChange={(e) => setEffectiveDate(e.target.value)}
-                    className="w-full px-3 py-2 text-sm font-mono bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] border border-neutral-200 dark:border-white/[0.12] rounded-lg"
+                    className="w-full px-3 py-2 text-sm font-mono bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">
+                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">
                     Tanggal Review Berikutnya
                   </label>
                   <input
                     type="date"
                     value={nextReviewDate}
                     onChange={(e) => setNextReviewDate(e.target.value)}
-                    className="w-full px-3 py-2 text-sm font-mono bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] border border-neutral-200 dark:border-white/[0.12] rounded-lg"
+                    className="w-full px-3 py-2 text-sm font-mono bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg"
                   />
                 </div>
               </div>
 
               {/* Access Level */}
-              <div className="p-4 bg-neutral-50 dark:bg-[#2a2a2a] border border-neutral-200 dark:border-white/[0.08] rounded-xl space-y-3">
+              <div className="p-4 bg-[var(--surface-2)] dark:bg-[#25252A] border border-[var(--border)] dark:border-[#33333A] rounded-xl space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-neutral-800 dark:text-[#e0e0e0]">
-                    <Lock className="w-3.5 h-3.5 text-neutral-600 dark:text-[#a0a0a0]" />
+                  <div className="flex items-center gap-2 text-xs font-semibold text-neutral-800 dark:text-[#F4F4F5]">
+                    <Lock className="w-3.5 h-3.5 text-neutral-600 dark:text-[#A1A1AA]" />
                     <span>Level Hak Akses SOP</span>
                   </div>
-                  <div className="flex items-center gap-1 p-1 bg-white dark:bg-[#1e1e1e] border border-neutral-200 dark:border-white/[0.08] rounded-lg">
+                  <div className="flex items-center gap-1 p-1 bg-[var(--surface)] dark:bg-[#1C1C20] border border-[var(--border)] dark:border-[#33333A] rounded-lg">
                     {(['Umum', 'Per Divisi', 'Rahasia'] as AccessLevel[]).map((lvl) => (
                       <button
                         key={lvl}
@@ -1626,7 +1631,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                         className={`px-3 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                           accessLevel === lvl
                             ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-900'
-                            : 'text-neutral-600 dark:text-[#a0a0a0] hover:text-neutral-900 dark:hover:text-[#ececec]'
+                            : 'text-neutral-600 dark:text-[#A1A1AA] hover:text-neutral-900 dark:hover:text-[#F4F4F5]'
                         }`}
                       >
                         {lvl}
@@ -1636,7 +1641,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                 </div>
                 {accessLevel === 'Rahasia' && (
                   <div className="space-y-1.5">
-                    <p className="text-xs text-neutral-600 dark:text-[#a0a0a0]">
+                    <p className="text-xs text-neutral-600 dark:text-[#A1A1AA]">
                       Pilih pengguna yang diizinkan membaca dan menanyakan SOP ini ke AI:
                     </p>
                     <div className="flex flex-wrap gap-2">
@@ -1645,7 +1650,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                         return (
                           <label
                             key={m.uid}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-white dark:bg-[#1e1e1e] text-neutral-800 dark:text-[#e0e0e0] border border-neutral-200 dark:border-white/[0.1] rounded-md cursor-pointer"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-[var(--surface)] dark:bg-[#1C1C20] text-neutral-800 dark:text-[#F4F4F5] border border-[var(--border)] dark:border-[#33333A] rounded-md cursor-pointer"
                           >
                             <input
                               type="checkbox"
@@ -1670,7 +1675,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
               {/* Logical Sections Editor */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-neutral-900 dark:text-[#ececec]">
+                  <h3 className="text-sm font-semibold text-neutral-900 dark:text-[#F4F4F5]">
                     Bagian & Langkah Prosedur (Dipecah per Bagian untuk AI RAG)
                   </h3>
                   <button
@@ -1686,7 +1691,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                         },
                       ])
                     }
-                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-neutral-800 dark:text-[#ececec] bg-neutral-100 dark:bg-[#2a2a2a] hover:bg-neutral-200 dark:hover:bg-[#343434] border border-neutral-200 dark:border-white/[0.08] rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-neutral-800 dark:text-[#F4F4F5] bg-[var(--surface-3)] dark:bg-[#25252A] hover:bg-neutral-200 dark:hover:bg-[#2F2F36] border border-[var(--border)] dark:border-[#33333A] rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Tambah Bagian</span>
@@ -1694,9 +1699,9 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                 </div>
 
                 {sections.map((sec, idx) => (
-                  <div key={sec.id} className="p-4 border border-neutral-200 dark:border-white/[0.08] bg-white dark:bg-[#262626] rounded-xl space-y-2">
+                  <div key={sec.id} className="p-4 border border-[var(--border)] dark:border-[#33333A] bg-[var(--surface)] dark:bg-[#1C1C20] rounded-xl space-y-2">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-neutral-500 dark:text-[#8e8e8e] tabular-nums">
+                      <span className="font-mono text-xs text-neutral-500 dark:text-[#A1A1AA] tabular-nums">
                         #{idx + 1}
                       </span>
                       <input
@@ -1710,7 +1715,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                           )
                         }
                         placeholder="Judul bagian / langkah"
-                        className="flex-1 px-2.5 py-1.5 text-sm font-medium bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] placeholder:text-neutral-400 dark:placeholder:text-[#7a7a7a] border border-neutral-200 dark:border-white/[0.12] rounded-md"
+                        className="flex-1 px-2.5 py-1.5 text-sm font-medium bg-[var(--surface)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] placeholder:text-neutral-400 dark:placeholder:text-[#6B7280] border border-[var(--border)] dark:border-[#33333A] rounded-md"
                       />
                       {sections.length > 1 && (
                         <button
@@ -1718,7 +1723,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                           onClick={() =>
                             setSections((prev) => prev.filter((_, i) => i !== idx))
                           }
-                          className="p-1.5 text-neutral-400 dark:text-[#7a7a7a] hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
+                          className="p-1.5 text-neutral-400 dark:text-[#A1A1AA] hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
                           aria-label="Hapus bagian"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -1736,20 +1741,20 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                         )
                       }
                       placeholder="Tuliskan langkah kerja terperinci, penanggung jawab, SLA, atau angka batas..."
-                      className="w-full px-3 py-2 text-sm bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] placeholder:text-neutral-400 dark:placeholder:text-[#7a7a7a] border border-neutral-200 dark:border-white/[0.12] rounded-md focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
+                      className="w-full px-3 py-2 text-sm bg-[var(--surface)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] placeholder:text-neutral-400 dark:placeholder:text-[#6B7280] border border-[var(--border)] dark:border-[#33333A] rounded-md focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
                     />
 
                     {/* Per-Module Photo Upload */}
                     <div className="pt-2 border-t border-neutral-100 dark:border-white/[0.06] space-y-2.5">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-700 dark:text-[#c4c4c4]">
-                          <ImageIcon className="w-3.5 h-3.5 text-neutral-500 dark:text-[#8e8e8e]" />
+                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-700 dark:text-[#A1A1AA]">
+                          <ImageIcon className="w-3.5 h-3.5 text-neutral-500 dark:text-[#A1A1AA]" />
                           <span>
-                            Foto / Gambar Modul: <strong className="text-neutral-900 dark:text-[#ececec]">{sec.title || `Bagian ${idx + 1}`}</strong>
+                            Foto / Gambar Modul: <strong className="text-neutral-900 dark:text-[#F4F4F5]">{sec.title || `Bagian ${idx + 1}`}</strong>
                             {sec.images?.length ? ` (${sec.images.length})` : ''}
                           </span>
                         </span>
-                        <label className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-neutral-800 dark:text-[#ececec] bg-neutral-100 dark:bg-[#2f2f2f] hover:bg-neutral-200 dark:hover:bg-[#3a3a3a] border border-neutral-200 dark:border-white/[0.08] rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer">
+                        <label className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-neutral-800 dark:text-[#F4F4F5] bg-[var(--surface-3)] dark:bg-[#25252A] hover:bg-neutral-200 dark:hover:bg-[#2F2F36] border border-[var(--border)] dark:border-[#33333A] rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer">
                           {uploadingSectionIdx === idx ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
                           ) : (
@@ -1774,9 +1779,9 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                           {sec.images.map((img, imIdx) => (
                             <div
                               key={img.id || imIdx}
-                              className="bg-neutral-50 dark:bg-[#2a2a2a] border border-neutral-200 dark:border-white/[0.08] rounded-lg p-2 space-y-2"
+                              className="bg-[var(--surface-2)] dark:bg-[#25252A] border border-[var(--border)] dark:border-[#33333A] rounded-lg p-2 space-y-2"
                             >
-                              <div className="relative aspect-[16/10] bg-white border border-neutral-200 dark:border-white/[0.08] rounded overflow-hidden">
+                              <div className="relative aspect-[16/10] bg-[var(--surface)] border border-[var(--border)] dark:border-[#33333A] rounded overflow-hidden">
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -1802,7 +1807,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                                       caption: img.caption || sec.title,
                                     })
                                   }
-                                  className="absolute top-1.5 right-1.5 p-1 bg-white/90 dark:bg-[#171717]/90 hover:bg-white dark:hover:bg-[#2a2a2a] border border-neutral-200 dark:border-white/[0.1] rounded text-neutral-700 dark:text-[#ececec] cursor-pointer"
+                                  className="absolute top-1.5 right-1.5 p-1 bg-[var(--surface)]/90 dark:bg-[#131316]/90 hover:bg-[var(--surface)] dark:hover:bg-[#2F2F36] border border-[var(--border)] dark:border-[#33333A] rounded text-neutral-700 dark:text-[#F4F4F5] cursor-pointer"
                                   aria-label="Perbesar foto"
                                 >
                                   <Maximize2 className="w-3 h-3" />
@@ -1828,13 +1833,13 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                                     );
                                   }}
                                   placeholder="Keterangan gambar (sesuai modul)"
-                                  className="flex-1 min-w-0 px-2 py-1 text-xs bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] placeholder:text-neutral-400 dark:placeholder:text-[#7a7a7a] border border-neutral-200 dark:border-white/[0.12] rounded focus:outline-none focus:ring-1 focus:ring-neutral-900/20 dark:focus:ring-white/25"
+                                  className="flex-1 min-w-0 px-2 py-1 text-xs bg-[var(--surface)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] placeholder:text-neutral-400 dark:placeholder:text-[#6B7280] border border-[var(--border)] dark:border-[#33333A] rounded focus:outline-none focus:ring-1 focus:ring-neutral-900/20 dark:focus:ring-white/25"
                                 />
                                 <button
                                   type="button"
                                   disabled={scanningImageId === img.id}
                                   onClick={() => handleRescanModuleImage(idx, img)}
-                                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-neutral-800 dark:text-[#ececec] bg-neutral-100 dark:bg-[#2f2f2f] hover:bg-neutral-200 dark:hover:bg-[#3a3a3a] border border-neutral-200 dark:border-white/[0.08] rounded cursor-pointer disabled:opacity-60 shrink-0"
+                                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-neutral-800 dark:text-[#F4F4F5] bg-[var(--surface-3)] dark:bg-[#25252A] hover:bg-neutral-200 dark:hover:bg-[#2F2F36] border border-[var(--border)] dark:border-[#33333A] rounded cursor-pointer disabled:opacity-60 shrink-0"
                                   title="Pindai teks OCR & cek kesesuaian modul dengan AI Vision"
                                 >
                                   {scanningImageId === img.id ? (
@@ -1860,7 +1865,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                                       )
                                     )
                                   }
-                                  className="p-1 text-neutral-400 dark:text-[#7a7a7a] hover:text-rose-600 dark:hover:text-rose-400 rounded hover:bg-rose-50 dark:hover:bg-rose-950/50 cursor-pointer shrink-0"
+                                  className="p-1 text-neutral-400 dark:text-[#A1A1AA] hover:text-rose-600 dark:hover:text-rose-400 rounded hover:bg-[var(--danger-soft)] dark:hover:bg-rose-950/50 cursor-pointer shrink-0"
                                   title="Hapus foto modul"
                                   aria-label="Hapus foto modul"
                                 >
@@ -1868,14 +1873,14 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                                 </button>
                               </div>
                               {img.aiWarning && (
-                                <div className="px-2 py-1.5 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/70 rounded text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5">
+                                <div className="px-2 py-1.5 bg-[var(--warning-soft)] dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/70 rounded text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5">
                                   <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                                   <span>{img.aiWarning}</span>
                                 </div>
                               )}
                               {img.ocrText && (
-                                <div className="px-2 py-1.5 bg-neutral-100 dark:bg-[#1e1e1e] border border-neutral-200 dark:border-white/[0.08] rounded text-[11px] text-neutral-700 dark:text-[#c4c4c4]">
-                                  <span className="font-semibold text-neutral-900 dark:text-[#ececec]">AI OCR: </span>
+                                <div className="px-2 py-1.5 bg-[var(--surface-3)] dark:bg-[#1C1C20] border border-[var(--border)] dark:border-[#33333A] rounded text-[11px] text-neutral-700 dark:text-[#A1A1AA]">
+                                  <span className="font-semibold text-neutral-900 dark:text-[#F4F4F5]">AI OCR: </span>
                                   <span className="line-clamp-2">{img.ocrText}</span>
                                 </div>
                               )}
@@ -1891,10 +1896,10 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
               {/* File Attachments */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-neutral-800 dark:text-[#e0e0e0]">
+                  <span className="text-xs font-semibold text-neutral-800 dark:text-[#F4F4F5]">
                     Lampiran / Formulir (PDF, Word, Excel)
                   </span>
-                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-[#e0e0e0] bg-neutral-100 dark:bg-[#2a2a2a] hover:bg-neutral-200 dark:hover:bg-[#343434] rounded-md cursor-pointer">
+                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-[#F4F4F5] bg-[var(--surface-3)] dark:bg-[#25252A] hover:bg-neutral-200 dark:hover:bg-[#2F2F36] rounded-md cursor-pointer">
                     {uploadingAttachment ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     ) : (
@@ -1913,7 +1918,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                 {attachments.map((att) => (
                   <div
                     key={att.id}
-                    className="flex items-center justify-between gap-2 px-3 py-2 bg-neutral-50 dark:bg-[#2a2a2a] border border-neutral-200 dark:border-white/[0.08] rounded-md text-xs text-neutral-800 dark:text-[#e0e0e0]"
+                    className="flex items-center justify-between gap-2 px-3 py-2 bg-[var(--surface-2)] dark:bg-[#25252A] border border-[var(--border)] dark:border-[#33333A] rounded-md text-xs text-neutral-800 dark:text-[#F4F4F5]"
                   >
                     <span className="truncate">
                       {att.name} ({att.fileType} · {att.sizeLabel}
@@ -1934,7 +1939,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
 
               {!isNew && (
                 <div>
-                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">
+                  <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">
                     Catatan Perubahan (untuk riwayat versi)
                   </label>
                   <input
@@ -1942,7 +1947,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                     value={changeNote}
                     onChange={(e) => setChangeNote(e.target.value)}
                     placeholder="Contoh: Pembaruan plafon hotel luar kota dan SLA pencairan"
-                    className="w-full px-3 py-2 text-sm bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] placeholder:text-neutral-400 dark:placeholder:text-[#7a7a7a] border border-neutral-200 dark:border-white/[0.12] rounded-lg"
+                    className="w-full px-3 py-2 text-sm bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] placeholder:text-[var(--text-subtle)] dark:placeholder:text-[#6B7280] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg"
                   />
                 </div>
               )}
@@ -1950,8 +1955,8 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                 <div
                   className={`p-4 rounded-xl border space-y-3 ${
                     conflictReport.hasIssues
-                      ? 'bg-amber-50/90 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800/80'
-                      : 'bg-emerald-50/90 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/70'
+                      ? 'bg-[var(--warning-soft)] dark:bg-amber-950/40 border-amber-300 dark:border-amber-800/80'
+                      : 'bg-[var(--success-soft)] dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/70'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -1962,12 +1967,12 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                         <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                       )}
                       <div className="min-w-0">
-                        <h4 className="text-xs font-bold text-neutral-900 dark:text-[#ececec]">
+                        <h4 className="text-xs font-bold text-neutral-900 dark:text-[#F4F4F5]">
                           {conflictReport.hasIssues
                             ? `Guardrail Konflik Pra-Publikasi (${conflictReport.conflicts.length} temuan)`
                             : 'Aman — Tidak Ada Konflik Terdeteksi'}
                         </h4>
-                        <p className="text-xs text-neutral-700 dark:text-[#d4d4d4] mt-0.5">
+                        <p className="text-xs text-neutral-700 dark:text-[#F4F4F5] mt-0.5">
                           {conflictReport.summary}
                         </p>
                       </div>
@@ -1978,7 +1983,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                         setConflictReport(null);
                         setPendingConflictStatus(null);
                       }}
-                      className="p-1 text-neutral-500 dark:text-[#8e8e8e] hover:text-neutral-800 dark:hover:text-[#ececec] cursor-pointer"
+                      className="p-1 text-neutral-500 dark:text-[#A1A1AA] hover:text-neutral-800 dark:hover:text-[#F4F4F5] cursor-pointer"
                       aria-label="Tutup laporan guardrail"
                     >
                       <X className="w-3.5 h-3.5" />
@@ -1990,17 +1995,17 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                       {conflictReport.conflicts.map((item, cIdx) => (
                         <div
                           key={`${item.existingSopId}-${cIdx}`}
-                          className="p-2.5 bg-white dark:bg-[#1e1e1e] border border-amber-200 dark:border-amber-800/60 rounded-lg text-xs space-y-1"
+                          className="p-2.5 bg-[var(--surface)] dark:bg-[#1C1C20] border border-amber-200 dark:border-amber-800/60 rounded-lg text-xs space-y-1"
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="font-semibold text-neutral-900 dark:text-[#ececec]">
-                              <span className="font-mono text-neutral-900 dark:text-[#ececec]">
+                            <span className="font-semibold text-neutral-900 dark:text-[#F4F4F5]">
+                              <span className="font-mono text-neutral-900 dark:text-[#F4F4F5]">
                                 {item.existingDocNumber}
                               </span>{' '}
                               — {item.existingTitle}
                             </span>
                             <div className="flex items-center gap-1.5">
-                              <span className="px-2 py-0.5 text-[10px] font-semibold bg-neutral-100 dark:bg-[#2a2a2a] text-neutral-700 dark:text-[#c4c4c4] rounded">
+                              <span className="px-2 py-0.5 text-[10px] font-semibold bg-[var(--surface-3)] dark:bg-[#25252A] text-neutral-700 dark:text-[#A1A1AA] rounded">
                                 {item.conflictType}
                               </span>
                               <span
@@ -2009,15 +2014,15 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                                     ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-800 dark:text-rose-300'
                                     : item.severity === 'Sedang'
                                     ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300'
-                                    : 'bg-neutral-100 dark:bg-[#2a2a2a] text-neutral-700 dark:text-[#c4c4c4]'
+                                    : 'bg-[var(--surface-3)] dark:bg-[#25252A] text-neutral-700 dark:text-[#A1A1AA]'
                                 }`}
                               >
                                 {item.severity}
                               </span>
                             </div>
                           </div>
-                          <p className="text-neutral-700 dark:text-[#d4d4d4]">{item.description}</p>
-                          <p className="text-neutral-900 dark:text-[#ececec] font-medium">
+                          <p className="text-neutral-700 dark:text-[#F4F4F5]">{item.description}</p>
+                          <p className="text-neutral-900 dark:text-[#F4F4F5] font-medium">
                             Saran: {item.recommendation}
                           </p>
                         </div>
@@ -2033,7 +2038,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                           setConflictReport(null);
                           setPendingConflictStatus(null);
                         }}
-                        className="px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-[#e0e0e0] bg-white dark:bg-[#2a2a2a] border border-neutral-200 dark:border-white/[0.1] rounded-lg hover:bg-neutral-100 dark:hover:bg-[#343434] cursor-pointer"
+                        className="px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-[#F4F4F5] bg-[var(--surface)] dark:bg-[#25252A] border border-[var(--border)] dark:border-[#33333A] rounded-lg hover:bg-[var(--surface-2)] dark:hover:bg-[#2F2F36] cursor-pointer"
                       >
                         Perbaiki Isi SOP
                       </button>
@@ -2055,14 +2060,14 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
 
         {/* Footer Actions */}
         {mode === 'edit' && (
-          <div className="px-6 py-4 border-t border-neutral-200 dark:border-white/[0.08] bg-neutral-50 dark:bg-[#171717] flex flex-wrap items-center justify-between gap-3">
+          <div className="px-6 py-4 border-t border-[var(--border)] dark:border-[#33333A] bg-[var(--surface-2)] dark:bg-[#131316] flex flex-wrap items-center justify-between gap-3">
             <div>
               {!isNew && canApprove && (
                 <button
                   type="button"
                   disabled={saving || checkingConflicts}
-                  onClick={handleDelete}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition-colors cursor-pointer"
+                  onClick={() => setConfirmDeleteOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-[var(--danger)] dark:text-rose-400 hover:bg-[var(--danger-soft)] dark:hover:bg-rose-950/50 rounded-lg transition-colors cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>Hapus SOP</span>
@@ -2076,7 +2081,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                   type="button"
                   disabled={saving || checkingConflicts}
                   onClick={handleManualConflictCheck}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-neutral-800 dark:text-[#ececec] bg-neutral-100 dark:bg-[#2a2a2a] border border-neutral-200 dark:border-white/[0.08] rounded-lg hover:bg-neutral-200 dark:hover:bg-[#343434] disabled:opacity-60 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-neutral-800 dark:text-[#F4F4F5] bg-[var(--surface-3)] dark:bg-[#25252A] border border-[var(--border)] dark:border-[#33333A] rounded-lg hover:bg-neutral-200 dark:hover:bg-[#2F2F36] disabled:opacity-60 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   {checkingConflicts ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -2090,7 +2095,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                 type="button"
                 disabled={saving || checkingConflicts}
                 onClick={() => handleSave('Draft')}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-neutral-700 dark:text-[#e0e0e0] bg-white dark:bg-[#262626] border border-neutral-200 dark:border-white/[0.1] rounded-lg hover:bg-neutral-100 dark:hover:bg-[#323232] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-neutral-700 dark:text-[#F4F4F5] bg-[var(--surface)] dark:bg-[#1C1C20] border border-[var(--border)] dark:border-[#33333A] rounded-lg hover:bg-[var(--surface-2)] dark:hover:bg-[#323232] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <Save className="w-3.5 h-3.5" />
                 <span>Simpan Draft</span>
@@ -2099,7 +2104,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                 type="button"
                 disabled={saving || checkingConflicts}
                 onClick={() => handleSave('Review')}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/70 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/60 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-amber-800 dark:text-amber-200 bg-[var(--warning-soft)] dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/70 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/60 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <Clock className="w-3.5 h-3.5" />
                 <span>Ajukan Review</span>
@@ -2111,7 +2116,7 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
                       type="button"
                       disabled={saving || checkingConflicts}
                       onClick={() => handleSave('Arsip')}
-                      className="px-3.5 py-2 text-xs font-medium text-neutral-700 dark:text-[#e0e0e0] bg-neutral-200 dark:bg-[#2f2f2f] rounded-lg hover:bg-neutral-300 dark:hover:bg-[#3a3a3a] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                      className="px-3.5 py-2 text-xs font-medium text-neutral-700 dark:text-[#F4F4F5] bg-neutral-200 dark:bg-[#25252A] rounded-lg hover:bg-neutral-300 dark:hover:bg-[#2F2F36] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                     >
                       Arsipkan
                     </button>
@@ -2141,33 +2146,62 @@ export const SopDetailModal: React.FC<SopDetailModalProps> = ({
       {zoomedPage && (
         <div
           onClick={() => setZoomedPage(null)}
-          className="fixed inset-0 z-[60] bg-neutral-950/75 dark:bg-black/85 flex items-center justify-center p-4"
+          className="fixed inset-0 z-[60] bg-[var(--overlay-bg)] dark:bg-black/85 flex items-center justify-center p-4"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white dark:bg-[#212121] rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-neutral-200 dark:border-white/[0.1]"
+            className="bg-[var(--surface)] dark:bg-[#131316] rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-[var(--border)] dark:border-[#33333A]"
           >
-            <div className="px-4 py-3 border-b border-neutral-200 dark:border-white/[0.08] bg-white dark:bg-[#171717] flex items-center justify-between gap-3">
-              <p className="text-xs font-medium text-neutral-800 dark:text-[#e0e0e0] truncate">{zoomedPage.caption}</p>
+            <div className="px-4 py-3 border-b border-[var(--border)] dark:border-[#33333A] bg-[var(--surface)] dark:bg-[#131316] flex items-center justify-between gap-3">
+              <p className="text-xs font-medium text-neutral-800 dark:text-[#F4F4F5] truncate">{zoomedPage.caption}</p>
               <button
                 type="button"
                 onClick={() => setZoomedPage(null)}
-                className="p-1.5 text-neutral-500 dark:text-[#8e8e8e] hover:text-neutral-900 dark:hover:text-[#ececec] rounded-md hover:bg-neutral-100 dark:hover:bg-[#2a2a2a] cursor-pointer"
+                className="p-1.5 text-neutral-500 dark:text-[#A1A1AA] hover:text-neutral-900 dark:hover:text-[#F4F4F5] rounded-md hover:bg-[var(--surface-2)] dark:hover:bg-[#2F2F36] cursor-pointer"
                 aria-label="Tutup gambar"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="flex-1 overflow-auto p-4 bg-neutral-100 dark:bg-[#141414] flex items-center justify-center">
+            <div className="flex-1 overflow-auto p-4 bg-[var(--surface-3)] dark:bg-[#141414] flex items-center justify-center">
               <img
                 src={zoomedPage.url}
                 alt={zoomedPage.caption}
-                className="max-w-full max-h-[76vh] object-contain rounded shadow-sm bg-white"
+                className="max-w-full max-h-[76vh] object-contain rounded dark:shadow-sm bg-[var(--surface)]"
               />
             </div>
           </div>
         </div>
       )}
+
+      <DeleteConfirmModal
+        open={confirmDeleteOpen && Boolean(sop)}
+        title={sop ? `Hapus SOP ${sop.docNumber}?` : 'Hapus Dokumen SOP?'}
+        description={
+          sop ? (
+            <>
+              Dokumen SOP <strong>{sop.title}</strong> beserta seluruh indeks pencarian AI dan
+              lampiran terkait akan dihapus permanen dari repositori.
+            </>
+          ) : null
+        }
+        details={
+          sop
+            ? [
+                { label: 'Nomor Dokumen', value: sop.docNumber },
+                { label: 'Judul SOP', value: sop.title },
+                {
+                  label: 'Divisi & Versi',
+                  value: `${sop.divisionName || '-'} · v${sop.version || 1}`,
+                },
+              ]
+            : undefined
+        }
+        confirmLabel="Hapus SOP"
+        loading={saving}
+        onCancel={() => setConfirmDeleteOpen(false)}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 };

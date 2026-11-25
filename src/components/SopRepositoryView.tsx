@@ -9,7 +9,9 @@ import {
   Plus,
   Search,
 } from 'lucide-react';
+import { useI18n } from '../lib/i18n';
 import type { Department, Division, SopDocument, SopStatus, UserProfile } from '../types/sop';
+import { TablePaginationBar, useTablePagination } from './TablePaginationBar';
 
 interface SopRepositoryViewProps {
   user: UserProfile;
@@ -28,6 +30,7 @@ export const SopRepositoryView: React.FC<SopRepositoryViewProps> = ({
   onSelectSop,
   onCreateNewSop,
 }) => {
+  const { t, formatNumber } = useI18n();
   const [selectedDivId, setSelectedDivId] = useState<string>('all');
   const [selectedDeptId, setSelectedDeptId] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'Semua' | SopStatus>('Semua');
@@ -70,6 +73,11 @@ export const SopRepositoryView: React.FC<SopRepositoryViewProps> = ({
       .sort((a, b) => a.docNumber.localeCompare(b.docNumber));
   }, [sops, selectedDivId, selectedDeptId, statusFilter, onlyAttention, searchQuery, today]);
 
+  const sopPaging = useTablePagination(filteredSops, {
+    defaultPageSize: 15,
+    storageKey: 'sop_repository',
+  });
+
   const hasActiveFilter =
     selectedDivId !== 'all' ||
     selectedDeptId !== 'all' ||
@@ -85,22 +93,45 @@ export const SopRepositoryView: React.FC<SopRepositoryViewProps> = ({
     setSearchQuery('');
   };
 
+  const getStatusLabel = (st: 'Semua' | SopStatus): string => {
+    switch (st) {
+      case 'Semua':
+        return t('sop.statusAll');
+      case 'Disetujui':
+        return t('sop.statusApproved');
+      case 'Review':
+        return t('sop.statusReview');
+      case 'Draft':
+        return t('sop.statusDraft');
+      case 'Arsip':
+        return t('sop.statusArchive');
+    }
+  };
+
+  const getAccessLabel = (level: SopDocument['accessLevel']): string => {
+    if (level === 'Umum') return t('sop.accessGeneral');
+    if (level === 'Rahasia') return t('sop.accessConfidential');
+    return t('sop.accessDivision');
+  };
+
   const statusIcon = (st: SopStatus) => {
-    if (st === 'Disetujui') return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />;
-    if (st === 'Review') return <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />;
-    return <FileText className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />;
+    if (st === 'Disetujui') return <CheckCircle2 className="w-3.5 h-3.5 text-[var(--success)] shrink-0" />;
+    if (st === 'Review') return <Clock className="w-3.5 h-3.5 text-[var(--warning)] shrink-0" />;
+    return <FileText className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />;
   };
 
   return (
-    <div className="min-h-[calc(100vh-3.5rem)] flex flex-col lg:flex-row bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-[calc(100vh-4rem)] flex flex-col lg:flex-row bg-[var(--bg)]">
       {/* Left Structure Tree: Divisi > Departemen */}
-      <aside className="lg:w-72 border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-4 space-y-4 shrink-0">
-        <div className="flex items-center justify-between">
-          <h2 className="font-display text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <FolderTree className="w-4 h-4 text-sky-600 dark:text-sky-400" />
-            <span>Struktur Organisasi</span>
+      <aside className="lg:w-72 border-b lg:border-b-0 lg:border-r border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5 space-y-4 shrink-0">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="font-display text-sm font-semibold text-[var(--text)] flex items-center gap-2">
+            <FolderTree className="w-4 h-4 text-[var(--accent-text)] shrink-0" />
+            <span>{t('sop.orgStructure')}</span>
           </h2>
-          <span className="font-mono text-xs text-slate-500 dark:text-slate-400 tabular-nums">{sops.length} SOP</span>
+          <span className="font-mono text-xs text-[var(--text-muted)] tabular-nums">
+            {t('sop.sopCount', { count: formatNumber(sops.length) })}
+          </span>
         </div>
 
         <div className="space-y-1">
@@ -112,12 +143,14 @@ export const SopRepositoryView: React.FC<SopRepositoryViewProps> = ({
             }}
             className={`w-full flex items-center justify-between px-3 py-2 text-xs rounded-lg transition-colors cursor-pointer ${
               selectedDivId === 'all'
-                ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-900 dark:text-sky-200 font-semibold'
-                : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-900'
+                ? 'bg-[var(--accent-soft)] text-[var(--text)] font-semibold'
+                : 'text-[var(--text-muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]'
             }`}
           >
-            <span>Semua Divisi</span>
-            <span className="font-mono tabular-nums text-slate-500 dark:text-slate-400">{sops.length}</span>
+            <span>{t('sop.allDivisions')}</span>
+            <span className="font-mono tabular-nums text-[var(--text-muted)]">
+              {formatNumber(sops.length)}
+            </span>
           </button>
 
           {divisions.map((div) => {
@@ -135,13 +168,13 @@ export const SopRepositoryView: React.FC<SopRepositoryViewProps> = ({
                   }}
                   className={`w-full flex items-center justify-between px-3 py-2 text-xs rounded-lg transition-colors cursor-pointer ${
                     isDivActive && selectedDeptId === 'all'
-                      ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-900 dark:text-sky-200 font-semibold'
-                      : 'text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-900'
+                      ? 'bg-[var(--accent-soft)] text-[var(--text)] font-semibold'
+                      : 'text-[var(--text)] hover:bg-[var(--surface-2)]'
                   }`}
                 >
                   <span className="truncate text-left">{div.name}</span>
-                  <span className="font-mono tabular-nums text-slate-500 dark:text-slate-400 shrink-0 ml-2">
-                    {divCount}
+                  <span className="font-mono tabular-nums text-[var(--text-muted)] shrink-0 ml-2">
+                    {formatNumber(divCount)}
                   </span>
                 </button>
 
@@ -158,16 +191,16 @@ export const SopRepositoryView: React.FC<SopRepositoryViewProps> = ({
                       }}
                       className={`w-full flex items-center justify-between pl-6 pr-3 py-1.5 text-xs rounded-md transition-colors cursor-pointer ${
                         isDeptActive
-                          ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-800 dark:text-sky-300 font-medium'
-                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900'
+                          ? 'bg-[var(--accent-soft)] text-[var(--text)] font-semibold'
+                          : 'text-[var(--text-muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]'
                       }`}
                     >
                       <span className="truncate text-left flex items-center gap-1.5">
-                        <ChevronRight className="w-3 h-3 text-slate-400 dark:text-slate-500 shrink-0" />
+                        <ChevronRight className="w-3 h-3 text-[var(--text-muted)] shrink-0" />
                         <span className="truncate">{dept.name}</span>
                       </span>
-                      <span className="font-mono tabular-nums text-slate-400 dark:text-slate-500 shrink-0 ml-2">
-                        {deptCount}
+                      <span className="font-mono tabular-nums text-[var(--text-muted)] shrink-0 ml-2">
+                        {formatNumber(deptCount)}
                       </span>
                     </button>
                   );
@@ -179,24 +212,25 @@ export const SopRepositoryView: React.FC<SopRepositoryViewProps> = ({
       </aside>
 
       {/* Main Repository List */}
-      <section className="flex-1 p-4 sm:p-6 lg:p-8 space-y-5 min-w-0">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="font-display text-xl font-bold text-slate-900 dark:text-slate-100">
-              Pusat Repositori SOP
+      <section className="flex-1 p-4 sm:p-6 lg:p-8 space-y-6 min-w-0 max-w-6xl">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="space-y-1">
+            <h1 className="font-display text-2xl font-bold text-[var(--text)]">
+              {t('sop.title')}
             </h1>
-            <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-              Hanya dokumen berstatus <strong>Disetujui</strong> yang diindeks dan dijawab oleh AI.
+            <div className="w-10 h-[3px] rounded-full bg-[var(--accent)]" aria-hidden="true" />
+            <p className="text-xs sm:text-sm text-[var(--text-muted)] pt-0.5">
+              {t('sop.subtitle')}
             </p>
           </div>
           {canCreate && (
             <button
               type="button"
               onClick={onCreateNewSop}
-              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-sky-600 rounded-lg hover:bg-sky-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="inline-flex items-center gap-2 h-10 px-4 text-xs font-semibold bg-[var(--accent)] text-[var(--on-accent)] hover:bg-[var(--accent-hover)] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>Buat SOP Baru</span>
+              <span>{t('sop.createNew')}</span>
             </button>
           )}
         </div>
@@ -204,84 +238,85 @@ export const SopRepositoryView: React.FC<SopRepositoryViewProps> = ({
         {/* Search & Status Filter Bar */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari nomor SOP, judul, langkah, atau pemilik proses..."
-              className="w-full pl-9 pr-4 py-2 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+              placeholder={t('sop.searchPlaceholder')}
+              className="w-full h-10 pl-10 pr-4 text-sm bg-[var(--surface)] text-[var(--text)] placeholder:text-[var(--text-muted)] border border-[var(--border)] rounded-lg focus:outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/25"
             />
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1 p-1 bg-slate-200/70 dark:bg-slate-800 rounded-lg overflow-x-auto">
+            <div className="flex items-center gap-1 p-1 bg-[var(--surface)] border border-[var(--border)] rounded-lg overflow-x-auto">
               {(['Semua', 'Disetujui', 'Review', 'Draft', 'Arsip'] as const).map((st) => (
                 <button
                   key={st}
                   type="button"
                   onClick={() => setStatusFilter(st)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                     statusFilter === st
-                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+                      ? 'bg-[var(--accent)] text-[var(--on-accent)]'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'
                   }`}
                 >
-                  {st}
+                  {getStatusLabel(st)}
                 </button>
               ))}
             </div>
             <button
               type="button"
               onClick={() => setOnlyAttention((v) => !v)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`h-10 px-3.5 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 onlyAttention
-                  ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300'
-                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                  ? 'bg-[var(--warning)]/14 border-[var(--warning)]/50 text-[var(--warning)] font-semibold'
+                  : 'bg-[var(--surface)] border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'
               }`}
             >
-              Perlu Review / Tanpa Owner
+              {t('sop.needsAttention')}
             </button>
           </div>
         </div>
 
-        {/* High-Density SOP Table */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+        {/* High-Density SOP List */}
+        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl overflow-hidden">
           {filteredSops.length === 0 ? (
             <div className="p-10 text-center space-y-3">
-              <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                Tidak ada dokumen SOP yang cocok dengan filter Anda.
+              <p className="text-sm font-semibold text-[var(--text)]">
+                {t('sop.emptyTitle')}
               </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Ubah kata kunci pencarian atau pilih divisi lain di sebelah kiri.
+              <p className="text-xs text-[var(--text-muted)]">
+                {t('sop.emptyDesc')}
               </p>
               {hasActiveFilter && (
                 <button
                   type="button"
                   onClick={resetFilters}
-                  className="inline-flex items-center px-3.5 py-1.5 text-xs font-medium text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/60 hover:bg-sky-100 dark:hover:bg-sky-900/60 rounded-md transition-colors cursor-pointer"
+                  className="inline-flex items-center h-9 px-4 text-xs font-semibold bg-[var(--accent)] text-[var(--on-accent)] hover:bg-[var(--accent-hover)] rounded-lg transition-colors cursor-pointer"
                 >
-                  Reset Filter
+                  {t('common.resetFilter')}
                 </button>
               )}
             </div>
           ) : (
-            <div className="divide-y divide-slate-200 dark:divide-slate-800">
-              {filteredSops.map((sop) => {
+            <>
+              <div className="divide-y divide-[var(--border)]">
+                {sopPaging.paginatedItems.map((sop) => {
                 const isOverdue =
                   sop.status === 'Disetujui' &&
                   sop.nextReviewDate &&
-                  sop.nextReviewDate < new Date().toISOString().slice(0, 10);
+                  sop.nextReviewDate < today;
 
                 return (
                   <div
                     key={sop.id}
                     onClick={() => onSelectSop(sop, 'read')}
-                    className="p-4 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer"
+                    className="p-4 hover:bg-[var(--surface-2)]/70 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer"
                   >
                     <div className="min-w-0 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                        <span className="font-mono font-semibold text-sky-700 dark:text-sky-400">
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]">
+                        <span className="font-mono font-semibold text-[var(--accent-text)]">
                           {sop.docNumber}
                         </span>
                         <span aria-hidden="true">·</span>
@@ -293,37 +328,39 @@ export const SopRepositoryView: React.FC<SopRepositoryViewProps> = ({
                         {sop.accessLevel !== 'Umum' && (
                           <>
                             <span aria-hidden="true">·</span>
-                            <span className="inline-flex items-center gap-1 text-slate-700 dark:text-slate-300 font-medium">
+                            <span className="inline-flex items-center gap-1 text-[var(--text)] font-medium">
                               <Lock className="w-3 h-3" />
-                              {sop.accessLevel}
+                              {getAccessLabel(sop.accessLevel)}
                             </span>
                           </>
                         )}
                       </div>
-                      <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
+                      <h3 className="text-sm font-semibold text-[var(--text)] truncate">
                         {sop.title}
                       </h3>
-                      <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-1">{sop.purpose}</p>
+                      <p className="text-xs text-[var(--text-muted)] line-clamp-1">{sop.purpose}</p>
                     </div>
 
                     <div className="flex sm:flex-col items-center sm:items-end justify-between gap-1.5 shrink-0 text-xs">
-                      <div className="flex items-center gap-1.5 font-medium text-slate-800 dark:text-slate-200">
+                      <div className="flex items-center gap-1.5 font-medium text-[var(--text)]">
                         {statusIcon(sop.status)}
-                        <span>{sop.status}</span>
+                        <span>{getStatusLabel(sop.status)}</span>
                       </div>
-                      <div className="text-slate-500 dark:text-slate-400 font-mono tabular-nums">
-                        {sop.ownerName ? sop.ownerName : 'Tanpa Owner'}
+                      <div className="text-[var(--text-muted)] font-mono tabular-nums">
+                        {sop.ownerName ? sop.ownerName : t('sop.noOwner')}
                         {isOverdue && (
-                          <span className="ml-2 text-rose-700 dark:text-rose-400 font-sans font-medium">
-                            · Lewat Review
+                          <span className="ml-2 text-[var(--danger)] font-sans font-medium">
+                            · {t('sop.overdueReview')}
                           </span>
                         )}
                       </div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+              <TablePaginationBar {...sopPaging.paginationProps} />
+            </>
           )}
         </div>
       </section>

@@ -12,6 +12,9 @@
         "role": { "type": "string", "enum": ["Super Admin", "Admin Divisi", "Penulis", "Karyawan"] },
         "divisionId": { "type": "string", "maxLength": 128 },
         "divisionName": { "type": "string", "maxLength": 120 },
+        "erpUserId": { "type": "integer", "description": "Mapped ERP m0_user.userid for ERP menu-based notification routing (0 = unmapped)." },
+        "erpUserCode": { "type": "string", "maxLength": 40, "description": "Mapped ERP m0_user.ukode." },
+        "erpUserName": { "type": "string", "maxLength": 120, "description": "Mapped ERP m0_user.unama." },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
@@ -183,6 +186,8 @@
         "userName": { "type": "string", "maxLength": 120 },
         "divisionId": { "type": "string", "maxLength": 128 },
         "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "isPinned": { "type": "boolean" },
+        "pinnedAt": { "type": "integer" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
@@ -253,7 +258,7 @@
         "actorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
         "actorName": { "type": "string", "minLength": 1, "maxLength": 120 },
         "action": { "type": "string", "minLength": 1, "maxLength": 80 },
-        "targetType": { "type": "string", "enum": ["SOP", "USER", "DIVISION", "DEPARTMENT"] },
+        "targetType": { "type": "string", "enum": ["SOP", "USER", "DIVISION", "DEPARTMENT", "MEETING", "ASSET", "MAINTENANCE"] },
         "targetId": { "type": "string", "minLength": 1, "maxLength": 128 },
         "targetLabel": { "type": "string", "maxLength": 240 },
         "divisionId": { "type": "string", "maxLength": 128 },
@@ -265,6 +270,321 @@
         "id", "actorUid", "actorName", "action", "targetType",
         "targetId", "targetLabel", "divisionId", "detail",
         "adminViewerUids", "createdAt"
+      ]
+    },
+    "Meeting": {
+      "title": "Meeting",
+      "description": "Scheduled company meeting with participants, reminder lead time, structured minutes, and optional SOP conversion link.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "description": { "type": "string", "maxLength": 4000 },
+        "divisionId": { "type": "string", "maxLength": 128 },
+        "divisionName": { "type": "string", "maxLength": 120 },
+        "date": { "type": "string", "minLength": 10, "maxLength": 20 },
+        "startTime": { "type": "string", "minLength": 4, "maxLength": 10 },
+        "endTime": { "type": "string", "minLength": 4, "maxLength": 10 },
+        "startAtMs": { "type": "integer" },
+        "reminderMinutes": { "type": "integer" },
+        "location": { "type": "string", "maxLength": 300 },
+        "status": { "type": "string", "enum": ["Terjadwal", "Berlangsung", "Selesai", "Dibatalkan"] },
+        "participantUids": { "type": "array" },
+        "participantNames": { "type": "array" },
+        "participantResponses": { "type": "array" },
+        "externalParticipants": { "type": "string", "maxLength": 500 },
+        "organizerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "organizerName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "viewerUids": { "type": "array" },
+        "isPublic": { "type": "boolean" },
+        "minutesSummary": { "type": "string", "maxLength": 12000 },
+        "decisions": { "type": "array" },
+        "actionItems": { "type": "array" },
+        "minutesVersion": { "type": "integer" },
+        "minutesUpdatedByName": { "type": "string", "maxLength": 120 },
+        "linkedSopId": { "type": "string", "maxLength": 128 },
+        "linkedSopDocNumber": { "type": "string", "maxLength": 60 },
+        "linkedSopTitle": { "type": "string", "maxLength": 240 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "title", "description", "divisionId", "divisionName",
+        "date", "startTime", "endTime", "startAtMs", "reminderMinutes",
+        "location", "status", "participantUids", "participantNames",
+        "externalParticipants", "organizerUid", "organizerName", "viewerUids",
+        "isPublic", "minutesSummary", "decisions", "actionItems",
+        "minutesVersion", "minutesUpdatedByName", "linkedSopId",
+        "linkedSopDocNumber", "linkedSopTitle", "createdAt", "updatedAt"
+      ]
+    },
+    "MeetingMinuteVersion": {
+      "title": "MeetingMinuteVersion",
+      "description": "Immutable historical revision snapshot of meeting minutes and action items.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "meetingId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "version": { "type": "integer" },
+        "minutesSummary": { "type": "string", "maxLength": 12000 },
+        "decisions": { "type": "array" },
+        "actionItems": { "type": "array" },
+        "changeNote": { "type": "string", "maxLength": 500 },
+        "editedByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "editedByName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "viewerUids": { "type": "array" },
+        "isPublic": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "meetingId", "version", "minutesSummary", "decisions",
+        "actionItems", "changeNote", "editedByUid", "editedByName",
+        "viewerUids", "isPublic", "createdAt"
+      ]
+    },
+    "CompanyAsset": {
+      "title": "CompanyAsset",
+      "description": "Structured company asset record (vehicles, desks, chairs, buildings, IT/equipment) with unit count, location, condition, and PIC.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "assetCode": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "category": { "type": "string", "enum": ["Kendaraan", "Meja", "Kursi", "Bangunan", "Elektronik & IT", "Mesin & Peralatan", "Lainnya"] },
+        "subCategory": { "type": "string", "maxLength": 80 },
+        "quantity": { "type": "integer" },
+        "unit": { "type": "string", "minLength": 1, "maxLength": 30 },
+        "condition": { "type": "string", "enum": ["Baik", "Perlu Perhatian", "Dalam Perbaikan", "Rusak / Nonaktif"] },
+        "location": { "type": "string", "maxLength": 160 },
+        "divisionId": { "type": "string", "maxLength": 128 },
+        "divisionName": { "type": "string", "maxLength": 120 },
+        "picUid": { "type": "string", "maxLength": 128 },
+        "picName": { "type": "string", "maxLength": 120 },
+        "plateOrSerial": { "type": "string", "maxLength": 80 },
+        "brandModel": { "type": "string", "maxLength": 120 },
+        "purchaseDate": { "type": "string", "maxLength": 20 },
+        "currentOdometerKm": { "type": "integer" },
+        "notes": { "type": "string", "maxLength": 2000 },
+        "isPublic": { "type": "boolean" },
+        "viewerUids": { "type": "array" },
+        "createdByUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdByName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "assetCode", "name", "category", "subCategory", "quantity", "unit",
+        "condition", "location", "divisionId", "divisionName", "picUid", "picName",
+        "plateOrSerial", "brandModel", "purchaseDate", "currentOdometerKm", "notes",
+        "isPublic", "viewerUids", "createdByUid", "createdByName", "createdAt", "updatedAt"
+      ]
+    },
+    "AssetMaintenanceSchedule": {
+      "title": "AssetMaintenanceSchedule",
+      "description": "Scheduled recurring or one-time maintenance task for a company asset (service, oil change, STNK tax, KIR inspection, building upkeep).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "assetId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "assetCode": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "assetName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "assetCategory": { "type": "string", "enum": ["Kendaraan", "Meja", "Kursi", "Bangunan", "Elektronik & IT", "Mesin & Peralatan", "Lainnya"] },
+        "plateOrSerial": { "type": "string", "maxLength": 80 },
+        "maintenanceType": { "type": "string", "enum": ["Servis Berkala", "Ganti Oli", "Bayar Pajak STNK", "Uji KIR", "Perpanjangan Asuransi", "Perawatan Bangunan / AC", "Inspeksi & Kalibrasi", "Perbaikan", "Lainnya"] },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "dueDate": { "type": "string", "minLength": 10, "maxLength": 20 },
+        "dueAtMs": { "type": "integer" },
+        "intervalMonths": { "type": "integer" },
+        "intervalKm": { "type": "integer" },
+        "targetOdometerKm": { "type": "integer" },
+        "reminderDaysBefore": { "type": "integer" },
+        "status": { "type": "string", "enum": ["Terjadwal", "Mendekati Jatuh Tempo", "Terlambat", "Selesai", "Dibatalkan"] },
+        "lastCompletedDate": { "type": "string", "maxLength": 20 },
+        "estimatedCost": { "type": "integer" },
+        "vendorName": { "type": "string", "maxLength": 160 },
+        "picUid": { "type": "string", "maxLength": 128 },
+        "picName": { "type": "string", "maxLength": 120 },
+        "divisionId": { "type": "string", "maxLength": 128 },
+        "divisionName": { "type": "string", "maxLength": 120 },
+        "notes": { "type": "string", "maxLength": 2000 },
+        "history": { "type": "array" },
+        "isPublic": { "type": "boolean" },
+        "viewerUids": { "type": "array" },
+        "createdByUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdByName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "assetId", "assetCode", "assetName", "assetCategory", "plateOrSerial",
+        "maintenanceType", "title", "dueDate", "dueAtMs", "intervalMonths", "intervalKm",
+        "targetOdometerKm", "reminderDaysBefore", "status", "lastCompletedDate",
+        "estimatedCost", "vendorName", "picUid", "picName", "divisionId", "divisionName",
+        "notes", "history", "isPublic", "viewerUids", "createdByUid", "createdByName",
+        "createdAt", "updatedAt"
+      ]
+    },
+    "PinnedChart": {
+      "title": "PinnedChart",
+      "description": "Presentation-ready AI data visualization pinned to the Executive Dashboard.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "subtitle": { "type": "string", "maxLength": 300 },
+        "chartType": { "type": "string", "enum": ["bar", "horizontal_bar", "line", "area", "donut", "pie", "stacked_bar"] },
+        "palette": { "type": "string", "enum": ["corporate", "emerald", "boardroom", "contrast"] },
+        "valueFormat": { "type": "string", "enum": ["currency", "number", "percent"] },
+        "unitLabel": { "type": "string", "maxLength": 40 },
+        "categoryLabel": { "type": "string", "maxLength": 80 },
+        "labels": { "type": "array" },
+        "series": { "type": "array" },
+        "activeSeriesIndices": { "type": "array" },
+        "showDataLabels": { "type": "boolean" },
+        "sortMode": { "type": "string", "enum": ["original", "desc", "asc"] },
+        "speakerNotes": { "type": "string", "maxLength": 2000 },
+        "sourceQuestion": { "type": "string", "maxLength": 500 },
+        "sourceLabel": { "type": "string", "maxLength": 160 },
+        "displayOrder": { "type": "integer" },
+        "isShared": { "type": "boolean" },
+        "divisionId": { "type": "string", "maxLength": 128 },
+        "divisionName": { "type": "string", "maxLength": 120 },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "title", "subtitle", "chartType", "palette", "valueFormat",
+        "unitLabel", "categoryLabel", "labels", "series", "activeSeriesIndices",
+        "showDataLabels", "sortMode", "speakerNotes", "sourceQuestion",
+        "sourceLabel", "displayOrder", "isShared", "divisionId", "divisionName",
+        "ownerUid", "ownerName", "createdAt", "updatedAt"
+      ]
+    },
+    "NotificationRecord": {
+      "title": "NotificationRecord",
+      "description": "Special in-app notification and multi-channel delivery log (In-App, Email, WhatsApp) for asset maintenance, meeting, and SOP review reminders.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "category": { "type": "string", "enum": ["maintenance", "meeting", "sop_review", "general"] },
+        "priority": { "type": "string", "enum": ["normal", "warning", "urgent"] },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "sourceType": { "type": "string", "enum": ["ASSET_MAINTENANCE", "MEETING", "SOP", "MANUAL"] },
+        "sourceId": { "type": "string", "maxLength": 128 },
+        "sourceLabel": { "type": "string", "maxLength": 200 },
+        "dueDate": { "type": "string", "maxLength": 30 },
+        "recipientUid": { "type": "string", "maxLength": 128 },
+        "recipientName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "recipientEmail": { "type": "string", "maxLength": 254 },
+        "recipientPhone": { "type": "string", "maxLength": 40 },
+        "recipientErpCode": { "type": "string", "maxLength": 60 },
+        "divisionId": { "type": "string", "maxLength": 128 },
+        "channels": { "type": "array" },
+        "inAppRead": { "type": "boolean" },
+        "emailStatus": { "type": "string", "enum": ["not_requested", "sent", "failed", "manual_fallback", "missing_contact"] },
+        "whatsappStatus": { "type": "string", "enum": ["not_requested", "sent", "failed", "manual_fallback", "missing_contact"] },
+        "deliveryNote": { "type": "string", "maxLength": 500 },
+        "senderUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "senderName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "viewerUids": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "category", "priority", "title", "message", "sourceType", "sourceId",
+        "sourceLabel", "dueDate", "recipientUid", "recipientName", "recipientEmail",
+        "recipientPhone", "recipientErpCode", "divisionId", "channels", "inAppRead",
+        "emailStatus", "whatsappStatus", "deliveryNote", "senderUid", "senderName",
+        "viewerUids", "createdAt", "updatedAt"
+      ]
+    },
+    "EmployeeContactOverride": {
+      "title": "EmployeeContactOverride",
+      "description": "PII-protected supplementary employee Email & WhatsApp contact mapping reconciled with ERP m1_contact Employee records.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "erpContactId": { "type": "integer" },
+        "erpContactCode": { "type": "string", "maxLength": 60 },
+        "employeeName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "linkedUid": { "type": "string", "maxLength": 128 },
+        "divisionId": { "type": "string", "maxLength": 128 },
+        "divisionName": { "type": "string", "maxLength": 120 },
+        "jobTitle": { "type": "string", "maxLength": 120 },
+        "email": { "type": "string", "maxLength": 254 },
+        "whatsappPhone": { "type": "string", "maxLength": 40 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "adminViewerUids": { "type": "array" },
+        "updatedByUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "updatedByName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "erpContactId", "erpContactCode", "employeeName", "linkedUid",
+        "divisionId", "divisionName", "jobTitle", "email", "whatsappPhone",
+        "notes", "adminViewerUids", "updatedByUid", "updatedByName",
+        "createdAt", "updatedAt"
+      ]
+    },
+    "WarehouseMapGlobalSettings": {
+      "title": "WarehouseMapGlobalSettings",
+      "description": "Global warehouse capacity color thresholds, auto-refresh interval, and visibility behavior for ERP Warehouse Map Mode.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "scope": { "type": "string", "enum": ["workspace"] },
+        "greenMaxPct": { "type": "integer" },
+        "yellowMaxPct": { "type": "integer" },
+        "autoRefreshSeconds": { "type": "integer" },
+        "showOvercapacityBadge": { "type": "boolean" },
+        "syncVisibilityToStockTable": { "type": "boolean" },
+        "updatedByUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "updatedByName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "scope", "greenMaxPct", "yellowMaxPct", "autoRefreshSeconds",
+        "showOvercapacityBadge", "syncVisibilityToStockTable",
+        "updatedByUid", "updatedByName", "createdAt", "updatedAt"
+      ]
+    },
+    "WarehouseMapLayout": {
+      "title": "WarehouseMapLayout",
+      "description": "Per-warehouse visibility toggle and floorplan layout/capacity configuration synced with ERP m1_warehouse.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "scope": { "type": "string", "enum": ["workspace"] },
+        "warehouseCode": { "type": "string", "maxLength": 64 },
+        "warehouseName": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "displayName": { "type": "string", "maxLength": 160 },
+        "isVisible": { "type": "boolean" },
+        "isIntransit": { "type": "boolean" },
+        "sortOrder": { "type": "integer" },
+        "preset": { "type": "string", "enum": ["small", "medium", "large", "custom"] },
+        "areaCount": { "type": "integer" },
+        "racksPerArea": { "type": "integer" },
+        "aisleColumns": { "type": "integer" },
+        "defaultRackCapacity": { "type": "integer" },
+        "capacityUnit": { "type": "string", "enum": ["pcs", "box", "pallet", "kg", "unit"] },
+        "areaNames": { "type": "array" },
+        "facilityZones": { "type": "array" },
+        "updatedByUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "updatedByName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "scope", "warehouseCode", "warehouseName", "displayName",
+        "isVisible", "isIntransit", "sortOrder", "preset", "areaCount",
+        "racksPerArea", "aisleColumns", "defaultRackCapacity", "capacityUnit",
+        "areaNames", "facilityZones", "updatedByUid", "updatedByName",
+        "createdAt", "updatedAt"
       ]
     }
   },
@@ -312,6 +632,42 @@
     "/auditLogs/{auditId}": {
       "schema": { "$ref": "#/entities/AuditLog" },
       "description": "Immutable security and governance audit trail."
+    },
+    "/meetings/{meetingId}": {
+      "schema": { "$ref": "#/entities/Meeting" },
+      "description": "Company meetings with schedule, participants, reminder settings, minutes, and SOP links."
+    },
+    "/meetings/{meetingId}/minuteVersions/{versionId}": {
+      "schema": { "$ref": "#/entities/MeetingMinuteVersion" },
+      "description": "Immutable historical snapshots of meeting minutes."
+    },
+    "/assets/{assetId}": {
+      "schema": { "$ref": "#/entities/CompanyAsset" },
+      "description": "Company asset inventory across categories (vehicles, desks, chairs, buildings, IT, machinery)."
+    },
+    "/maintenanceSchedules/{scheduleId}": {
+      "schema": { "$ref": "#/entities/AssetMaintenanceSchedule" },
+      "description": "Scheduled recurring and one-time asset maintenance tasks (service, oil change, STNK tax, KIR, building upkeep)."
+    },
+    "/pinnedCharts/{chartId}": {
+      "schema": { "$ref": "#/entities/PinnedChart" },
+      "description": "Presentation charts generated from Tanya AI and pinned to the user or team Executive Dashboard."
+    },
+    "/notifications/{notifId}": {
+      "schema": { "$ref": "#/entities/NotificationRecord" },
+      "description": "Special in-app notifications and Email/WhatsApp reminder delivery logs."
+    },
+    "/employeeContacts/{contactId}": {
+      "schema": { "$ref": "#/entities/EmployeeContactOverride" },
+      "description": "PII-isolated supplementary Email & WhatsApp directory reconciled with ERP m1_contact Employee records."
+    },
+    "/warehouseMapSettings/{settingId}": {
+      "schema": { "$ref": "#/entities/WarehouseMapGlobalSettings" },
+      "description": "Global warehouse map capacity thresholds and ERP synchronization settings."
+    },
+    "/warehouseMapLayouts/{layoutId}": {
+      "schema": { "$ref": "#/entities/WarehouseMapLayout" },
+      "description": "Per-warehouse visibility toggle and floorplan layout/capacity settings bound to ERP m1_warehouse."
     }
   }
 }

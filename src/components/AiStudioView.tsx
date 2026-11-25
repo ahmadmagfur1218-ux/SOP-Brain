@@ -18,7 +18,9 @@ import {
 } from 'lucide-react';
 import { fetchApiJson } from '../lib/apiClient';
 import { getFreshIdToken } from '../lib/firebase';
+import { useI18n } from '../lib/i18n';
 import { extractPdfVisualPages } from '../lib/pdfVisuals';
+import { linkSopToMeeting } from '../lib/meetingService';
 import {
   ensureDivisionAndDepartment,
   makeSafeId,
@@ -46,9 +48,15 @@ interface AiStudioViewProps {
   departments: Department[];
   directory: DirectoryMember[];
   sops?: SopDocument[];
-  prefillNotes?: { notes: string; titleHint: string; logIds?: string[] } | null;
+  prefillNotes?: {
+    notes: string;
+    titleHint: string;
+    logIds?: string[];
+    meetingId?: string;
+  } | null;
   onClearPrefill?: () => void;
   onSopCreated: (sop: SopDocument) => void;
+  onMeetingSopLinked?: (meetingId: string, sop: SopDocument) => void;
   onOrgUpdated?: () => Promise<void>;
 }
 
@@ -85,8 +93,10 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
   prefillNotes,
   onClearPrefill,
   onSopCreated,
+  onMeetingSopLinked,
   onOrgUpdated,
 }) => {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<'import' | 'writer' | 'interview' | 'bulk'>(
     prefillNotes ? 'writer' : 'import'
   );
@@ -790,7 +800,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
       const saved = await saveSopWithVersionAndIndex({
         sop: newSop,
         isNew: true,
-        changeNote: 'Dibuat menggunakan asisten AI SOP Brain',
+        changeNote: 'Dibuat menggunakan asisten NARA AI',
         actor: user,
         directory,
         idToken: freshToken,
@@ -800,6 +810,21 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
         await Promise.allSettled(
           prefillNotes.logIds.map((lid) => markQueryGapResolved(lid, saved.id))
         );
+        onClearPrefill?.();
+      }
+
+      if (prefillNotes?.meetingId) {
+        try {
+          await linkSopToMeeting({
+            meetingId: prefillNotes.meetingId,
+            sop: saved,
+            actor: user,
+            directory,
+          });
+          onMeetingSopLinked?.(prefillNotes.meetingId, saved);
+        } catch (linkErr) {
+          console.error('Failed to link SOP to meeting:', linkErr);
+        }
         onClearPrefill?.();
       }
 
@@ -834,23 +859,24 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="font-display text-xl font-semibold text-neutral-900 dark:text-[#ececec]">
-            Pembuatan & Impor SOP dengan AI
+        <div className="space-y-1">
+          <h1 className="font-display text-2xl font-bold text-[var(--text)]">
+            {t('aiStudio.title')}
           </h1>
-          <p className="text-xs text-neutral-600 dark:text-[#a0a0a0] mt-0.5">
-            Ekstrak dokumen lama (PDF, Word, Excel) atau ubah catatan kasar menjadi SOP terstruktur. Manusia tetap meninjau sebelum terbit.
+          <div className="w-10 h-[3px] rounded-full bg-[var(--accent)]" aria-hidden="true" />
+          <p className="text-xs sm:text-sm text-[var(--text-muted)] pt-0.5">
+            {t('aiStudio.subtitle')}
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1 p-1 bg-neutral-100 dark:bg-[#171717] border border-neutral-200 dark:border-white/[0.08] rounded-lg self-start">
+        <div className="flex flex-wrap items-center gap-1 p-1 bg-[var(--surface-3)] dark:bg-[#131316] border border-[var(--border)] dark:border-[#33333A] rounded-lg self-start">
           <button
             type="button"
             onClick={() => setActiveTab('import')}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               activeTab === 'import'
-                ? 'bg-white dark:bg-[#2f2f2f] text-neutral-900 dark:text-[#ececec] shadow-sm'
-                : 'text-neutral-600 dark:text-[#a0a0a0] hover:text-neutral-900 dark:hover:text-[#ececec]'
+                ? 'bg-[var(--surface)] dark:bg-[#25252A] text-neutral-900 dark:text-[#F4F4F5] dark:shadow-sm'
+                : 'text-neutral-600 dark:text-[#A1A1AA] hover:text-neutral-900 dark:hover:text-[#F4F4F5]'
             }`}
           >
             <FileUp className="w-3.5 h-3.5" />
@@ -861,8 +887,8 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
             onClick={() => setActiveTab('writer')}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               activeTab === 'writer'
-                ? 'bg-white dark:bg-[#2f2f2f] text-neutral-900 dark:text-[#ececec] shadow-sm'
-                : 'text-neutral-600 dark:text-[#a0a0a0] hover:text-neutral-900 dark:hover:text-[#ececec]'
+                ? 'bg-[var(--surface)] dark:bg-[#25252A] text-neutral-900 dark:text-[#F4F4F5] dark:shadow-sm'
+                : 'text-neutral-600 dark:text-[#A1A1AA] hover:text-neutral-900 dark:hover:text-[#F4F4F5]'
             }`}
           >
             <PenTool className="w-3.5 h-3.5" />
@@ -873,8 +899,8 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
             onClick={() => setActiveTab('interview')}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               activeTab === 'interview'
-                ? 'bg-white dark:bg-[#2f2f2f] text-neutral-900 dark:text-[#ececec] shadow-sm'
-                : 'text-neutral-600 dark:text-[#a0a0a0] hover:text-neutral-900 dark:hover:text-[#ececec]'
+                ? 'bg-[var(--surface)] dark:bg-[#25252A] text-neutral-900 dark:text-[#F4F4F5] dark:shadow-sm'
+                : 'text-neutral-600 dark:text-[#A1A1AA] hover:text-neutral-900 dark:hover:text-[#F4F4F5]'
             }`}
           >
             <MessageCircleQuestion className="w-3.5 h-3.5" />
@@ -885,8 +911,8 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
             onClick={() => setActiveTab('bulk')}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
               activeTab === 'bulk'
-                ? 'bg-white dark:bg-[#2f2f2f] text-neutral-900 dark:text-[#ececec] shadow-sm'
-                : 'text-neutral-600 dark:text-[#a0a0a0] hover:text-neutral-900 dark:hover:text-[#ececec]'
+                ? 'bg-[var(--surface)] dark:bg-[#25252A] text-neutral-900 dark:text-[#F4F4F5] dark:shadow-sm'
+                : 'text-neutral-600 dark:text-[#A1A1AA] hover:text-neutral-900 dark:hover:text-[#F4F4F5]'
             }`}
           >
             <Layers className="w-3.5 h-3.5" />
@@ -899,22 +925,22 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
         <div
           role="status"
           aria-live="polite"
-          className="p-3.5 bg-neutral-100 dark:bg-[#2a2a2a] border border-neutral-200 dark:border-white/[0.1] rounded-lg text-xs text-neutral-900 dark:text-[#ececec] flex items-center gap-2.5"
+          className="p-3.5 bg-[var(--surface-3)] dark:bg-[#25252A] border border-[var(--border)] dark:border-[#33333A] rounded-lg text-xs text-neutral-900 dark:text-[#F4F4F5] flex items-center gap-2.5"
         >
-          <Loader2 className="w-4 h-4 text-neutral-700 dark:text-[#ececec] animate-spin shrink-0" />
+          <Loader2 className="w-4 h-4 text-neutral-700 dark:text-[#F4F4F5] animate-spin shrink-0" />
           <span className="font-medium">{processAlert}</span>
         </div>
       )}
 
       {errorMsg && (
-        <div className="p-3.5 bg-rose-50 dark:bg-rose-950/45 border border-rose-200 dark:border-rose-800/70 rounded-lg text-xs text-rose-800 dark:text-rose-200 flex items-center gap-2">
+        <div className="p-3.5 bg-[var(--danger-soft)] dark:bg-rose-950/45 border border-rose-200 dark:border-rose-800/70 rounded-lg text-xs text-rose-800 dark:text-rose-200 flex items-center gap-2">
           <AlertCircle className="w-4 h-4 shrink-0" />
           <span>{errorMsg}</span>
         </div>
       )}
 
       {savedNotice && (
-        <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/45 border border-emerald-200 dark:border-emerald-800/70 rounded-lg text-xs text-emerald-900 dark:text-emerald-200 flex items-center justify-between gap-2">
+        <div className="p-3.5 bg-[var(--success-soft)] dark:bg-emerald-950/45 border border-emerald-200 dark:border-emerald-800/70 rounded-lg text-xs text-emerald-900 dark:text-emerald-200 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span>{savedNotice}</span>
@@ -932,10 +958,10 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
 
       {/* TAB 1: Single AI Import */}
       {activeTab === 'import' && (
-        <div className="bg-white dark:bg-[#262626] border border-neutral-200 dark:border-white/[0.08] rounded-xl p-6 space-y-4">
+        <div className="bg-[var(--surface)] dark:bg-[#1C1C20] border border-[var(--border)] dark:border-[#33333A] rounded-xl p-6 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1.5">
+              <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1.5">
                 Unggah Dokumen Lama (PDF Teks/Bergambar, Word .docx, Excel .xlsx / .csv)
               </label>
               <input
@@ -944,17 +970,17 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                 onChange={(e) => {
                   void handleSingleFileSelected(e);
                 }}
-                className="w-full text-xs text-neutral-700 dark:text-[#c4c4c4] bg-white dark:bg-[#1e1e1e] file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-neutral-100 dark:file:bg-[#2f2f2f] file:text-neutral-800 dark:file:text-[#ececec] hover:file:bg-neutral-200 dark:hover:file:bg-[#3a3a3a] border border-neutral-200 dark:border-white/[0.12] rounded-lg p-1.5"
+                className="w-full text-xs text-neutral-700 dark:text-[#A1A1AA] bg-[var(--input-bg)] dark:bg-[#1C1C20] file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-neutral-100 dark:file:bg-[#2f2f2f] file:text-neutral-800 dark:file:text-[#ececec] hover:file:bg-neutral-200 dark:hover:file:bg-[#3a3a3a] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg p-1.5"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1.5">
+              <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1.5">
                 Divisi Tujuan (Opsional)
               </label>
               <select
                 value={divisionHint}
                 onChange={(e) => setDivisionHint(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-neutral-200 dark:border-white/[0.12] rounded-lg bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec]"
+                className="w-full px-3 py-2 text-sm border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5]"
               >
                 <option value="">-- Deteksi Otomatis AI --</option>
                 {divisions.map((d) => (
@@ -970,7 +996,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1.5">
+            <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1.5">
               Atau Tempel Teks Dokumen Lama
             </label>
             <textarea
@@ -978,7 +1004,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
               value={legacyText}
               onChange={(e) => setLegacyText(e.target.value)}
               placeholder="Tempel isi dokumen Word/email/catatan kebijakan yang ingin dirapikan menjadi SOP standar..."
-              className="w-full px-3 py-2 text-sm bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] placeholder:text-neutral-400 dark:placeholder:text-[#7a7a7a] border border-neutral-200 dark:border-white/[0.12] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
+              className="w-full px-3 py-2 text-sm bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] placeholder:text-[var(--text-subtle)] dark:placeholder:text-[#6B7280] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
             />
           </div>
 
@@ -1002,7 +1028,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                   'MEMO INTERNAL KEBIJAKAN KAS KECIL (PETTY CASH)\nDari: Finance Manager\nAturan baru berlaku mulai bulan depan:\n- Setiap cabang pegang kas kecil maksimal Rp5.000.000.\n- Pengeluaran sekali transaksi dari kas kecil maksimal Rp500.000 (di atas itu wajib transfer dari pusat).\n- Kalau saldo kas kecil sisa di bawah Rp1.000.000, admin cabang ajukan pengisian ulang (top-up) ke Finance AP tiap hari Rabu dengan melampirkan rekap excel + foto semua nota asli.\n- Nota yang hilang atau tidak bermaterai/cap toko tidak bisa diganti kecuali ada berita acara disetujui Kepala Cabang.'
                 );
               }}
-              className="px-3.5 py-2 text-xs font-medium text-neutral-700 dark:text-[#e0e0e0] bg-neutral-100 dark:bg-[#2f2f2f] hover:bg-neutral-200 dark:hover:bg-[#3a3a3a] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="px-3.5 py-2 text-xs font-medium text-neutral-700 dark:text-[#F4F4F5] bg-[var(--surface-3)] dark:bg-[#25252A] hover:bg-neutral-200 dark:hover:bg-[#2F2F36] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               Isi Contoh Dokumen Lama
             </button>
@@ -1012,10 +1038,10 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
 
       {/* TAB 2: AI SOP Writer */}
       {activeTab === 'writer' && (
-        <div className="bg-white dark:bg-[#262626] border border-neutral-200 dark:border-white/[0.08] rounded-xl p-6 space-y-4">
+        <div className="bg-[var(--surface)] dark:bg-[#1C1C20] border border-[var(--border)] dark:border-[#33333A] rounded-xl p-6 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1.5">
+              <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1.5">
                 Judul / Topik SOP
               </label>
               <input
@@ -1023,17 +1049,17 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                 value={titleHint}
                 onChange={(e) => setTitleHint(e.target.value)}
                 placeholder="Contoh: Prosedur Serah Terima Aset Karyawan Resign"
-                className="w-full px-3 py-2 text-sm bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] placeholder:text-neutral-400 dark:placeholder:text-[#7a7a7a] border border-neutral-200 dark:border-white/[0.12] rounded-lg"
+                className="w-full px-3 py-2 text-sm bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] placeholder:text-[var(--text-subtle)] dark:placeholder:text-[#6B7280] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1.5">
+              <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1.5">
                 Divisi Terkait
               </label>
               <select
                 value={divisionHint}
                 onChange={(e) => setDivisionHint(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-neutral-200 dark:border-white/[0.12] rounded-lg bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec]"
+                className="w-full px-3 py-2 text-sm border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5]"
               >
                 <option value="">-- Deteksi Otomatis AI --</option>
                 {divisions.map((d) => (
@@ -1049,7 +1075,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1.5">
+            <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1.5">
               Catatan Kasar, Poin Alur, atau Transkrip Diskusi
             </label>
             <textarea
@@ -1057,7 +1083,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
               value={notesInput}
               onChange={(e) => setNotesInput(e.target.value)}
               placeholder="Contoh: Kalau ada karyawan resign, H-3 sebelum hari terakhir HR kirim form exit clearance. Laptop dan ID card dikembalikan ke IT & GA, IT cabut akses email dan VPN hari itu juga jam 17.00..."
-              className="w-full px-3 py-2 text-sm bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] placeholder:text-neutral-400 dark:placeholder:text-[#7a7a7a] border border-neutral-200 dark:border-white/[0.12] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
+              className="w-full px-3 py-2 text-sm bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] placeholder:text-[var(--text-subtle)] dark:placeholder:text-[#6B7280] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
             />
           </div>
 
@@ -1081,7 +1107,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                   'Catatan rapat gudang: Kemarin banyak barang datang penyok tapi supir vendor sudah kabur. Mulai sekarang kalau barang sampai di loading dock, checker gudang wajib buka segel & cek fisik di depan supir. Kalau rusak > 5% atau salah SKU, langsung foto kerusakan, catat di Surat Jalan bagian catatan penolakan, minta tanda tangan supir vendor saat itu juga. Jangan tanda tangan Berita Acara Penerimaan penuh! Dalam 1x24 jam kirim laporan ke Buyer Procurement untuk minta barang pengganti maksimal 3 hari kerja.'
                 );
               }}
-              className="px-3.5 py-2 text-xs font-medium text-neutral-700 dark:text-[#e0e0e0] bg-neutral-100 dark:bg-[#2f2f2f] hover:bg-neutral-200 dark:hover:bg-[#3a3a3a] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="px-3.5 py-2 text-xs font-medium text-neutral-700 dark:text-[#F4F4F5] bg-[var(--surface-3)] dark:bg-[#25252A] hover:bg-neutral-200 dark:hover:bg-[#2F2F36] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               Isi Contoh Catatan Rapat
             </button>
@@ -1091,19 +1117,19 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
 
       {/* TAB 3: AI Offboarding / Handover Interview (Fase 3) */}
       {activeTab === 'interview' && (
-        <div className="bg-white dark:bg-[#262626] border border-neutral-200 dark:border-white/[0.08] rounded-xl p-6 space-y-5">
+        <div className="bg-[var(--surface)] dark:bg-[#1C1C20] border border-[var(--border)] dark:border-[#33333A] rounded-xl p-6 space-y-5">
           <div className="space-y-1">
-            <h2 className="font-display text-sm font-semibold text-neutral-900 dark:text-[#ececec]">
+            <h2 className="font-display text-sm font-semibold text-neutral-900 dark:text-[#F4F4F5]">
               Wawancara Handover Pengetahuan (Offboarding / Karyawan Kunci)
             </h2>
-            <p className="text-xs text-neutral-600 dark:text-[#a0a0a0]">
+            <p className="text-xs text-neutral-600 dark:text-[#A1A1AA]">
               Gali prosedur kerja yang belum terdokumentasi dari karyawan yang akan resign atau mutasi melalui wawancara terarah AI, lalu ubah menjadi SOP resmi.
             </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">
+              <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">
                 Peran / Jabatan Narasumber
               </label>
               <input
@@ -1111,15 +1137,15 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                 value={employeeRole}
                 onChange={(e) => setEmployeeRole(e.target.value)}
                 placeholder="Contoh: Senior Finance AP"
-                className="w-full px-3 py-2 text-sm bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] placeholder:text-neutral-400 dark:placeholder:text-[#7a7a7a] border border-neutral-200 dark:border-white/[0.12] rounded-lg"
+                className="w-full px-3 py-2 text-sm bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] placeholder:text-[var(--text-subtle)] dark:placeholder:text-[#6B7280] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">Divisi</label>
+              <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">Divisi</label>
               <select
                 value={divisionHint}
                 onChange={(e) => setDivisionHint(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-neutral-200 dark:border-white/[0.12] rounded-lg bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec]"
+                className="w-full px-3 py-2 text-sm border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5]"
               >
                 <option value="">-- Umum / Deteksi Otomatis --</option>
                 {divisions.map((d) => (
@@ -1133,7 +1159,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">
+              <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">
                 Topik Tugas yang Diserahterimakan
               </label>
               <input
@@ -1141,7 +1167,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                 value={interviewTopic}
                 onChange={(e) => setInterviewTopic(e.target.value)}
                 placeholder="Contoh: Rekonsiliasi Pajak & Vendor Bulanan"
-                className="w-full px-3 py-2 text-sm bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] placeholder:text-neutral-400 dark:placeholder:text-[#7a7a7a] border border-neutral-200 dark:border-white/[0.12] rounded-lg"
+                className="w-full px-3 py-2 text-sm bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] placeholder:text-[var(--text-subtle)] dark:placeholder:text-[#6B7280] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg"
               />
             </div>
           </div>
@@ -1165,14 +1191,14 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                   setDivisionHint('Keuangan & Akuntansi');
                   setInterviewTopic('Tutup Buku Bulanan & Rekonsiliasi Pembayaran Vendor');
                 }}
-                className="px-3.5 py-2 text-xs font-medium text-neutral-700 dark:text-[#e0e0e0] bg-neutral-100 dark:bg-[#2f2f2f] hover:bg-neutral-200 dark:hover:bg-[#3a3a3a] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                className="px-3.5 py-2 text-xs font-medium text-neutral-700 dark:text-[#F4F4F5] bg-[var(--surface-3)] dark:bg-[#25252A] hover:bg-neutral-200 dark:hover:bg-[#2F2F36] rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 Isi Contoh Skenario Handover
               </button>
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="border border-neutral-200 dark:border-white/[0.08] rounded-xl bg-neutral-50 dark:bg-[#171717] p-4 space-y-3 max-h-80 overflow-y-auto">
+              <div className="border border-[var(--border)] dark:border-[#33333A] rounded-xl bg-[var(--surface-2)] dark:bg-[#131316] p-4 space-y-3 max-h-80 overflow-y-auto">
                 {interviewTranscript.map((turn, idx) => (
                   <div
                     key={idx}
@@ -1181,11 +1207,11 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                     <div
                       className={`max-w-xl rounded-2xl px-4 py-2.5 text-xs leading-relaxed ${
                         turn.speaker === 'user'
-                          ? 'bg-[#f4f4f4] dark:bg-[#2f2f2f] text-neutral-900 dark:text-[#ececec]'
-                          : 'bg-white dark:bg-[#262626] border border-neutral-200 dark:border-white/[0.08] text-neutral-800 dark:text-[#e0e0e0]'
+                          ? 'bg-[#f4f4f4] dark:bg-[#25252A] text-neutral-900 dark:text-[#F4F4F5]'
+                          : 'bg-[var(--surface)] dark:bg-[#1C1C20] border border-[var(--border)] dark:border-[#33333A] text-neutral-800 dark:text-[#F4F4F5]'
                       }`}
                     >
-                      <span className="block font-semibold mb-0.5 text-neutral-500 dark:text-[#8e8e8e]">
+                      <span className="block font-semibold mb-0.5 text-neutral-500 dark:text-[#A1A1AA]">
                         {turn.speaker === 'user' ? employeeRole || 'Narasumber' : 'Pewawancara AI'}
                       </span>
                       {turn.text}
@@ -1195,11 +1221,11 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
               </div>
 
               {capturedKeyPoints.length > 0 && (
-                <div className="p-3.5 bg-neutral-50 dark:bg-[#2a2a2a] border border-neutral-200 dark:border-white/[0.08] rounded-lg space-y-1.5 text-xs">
-                  <p className="font-semibold text-neutral-800 dark:text-[#e0e0e0]">
+                <div className="p-3.5 bg-[var(--surface-2)] dark:bg-[#25252A] border border-[var(--border)] dark:border-[#33333A] rounded-lg space-y-1.5 text-xs">
+                  <p className="font-semibold text-neutral-800 dark:text-[#F4F4F5]">
                     Poin Pengetahuan yang Berhasil Digali ({capturedKeyPoints.length})
                   </p>
-                  <ul className="list-disc pl-4 space-y-0.5 text-neutral-700 dark:text-[#c4c4c4]">
+                  <ul className="list-disc pl-4 space-y-0.5 text-neutral-700 dark:text-[#A1A1AA]">
                     {capturedKeyPoints.map((pt, i) => (
                       <li key={i}>{pt}</li>
                     ))}
@@ -1220,7 +1246,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                   onChange={(e) => setInterviewAnswer(e.target.value)}
                   disabled={processing}
                   placeholder="Ketik jawaban narasumber di sini..."
-                  className="flex-1 px-3.5 py-2 text-sm bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] placeholder:text-neutral-400 dark:placeholder:text-[#7a7a7a] border border-neutral-200 dark:border-white/[0.12] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
+                  className="flex-1 px-3.5 py-2 text-sm bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] placeholder:text-[var(--text-subtle)] dark:placeholder:text-[#6B7280] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
                 />
                 <button
                   type="submit"
@@ -1232,7 +1258,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                 </button>
               </form>
 
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-neutral-200 dark:border-white/[0.08]">
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[var(--border)] dark:border-[#33333A]">
                 <button
                   type="button"
                   onClick={() => {
@@ -1240,7 +1266,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                     setCapturedKeyPoints([]);
                     setInterviewReady(false);
                   }}
-                  className="text-xs text-neutral-500 dark:text-[#8e8e8e] hover:text-neutral-800 dark:hover:text-[#ececec] cursor-pointer"
+                  className="text-xs text-neutral-500 dark:text-[#A1A1AA] hover:text-neutral-800 dark:hover:text-[#F4F4F5] cursor-pointer"
                 >
                   Ulangi Wawancara
                 </button>
@@ -1265,18 +1291,18 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
 
       {/* TAB 3: Bulk Import Queue */}
       {activeTab === 'bulk' && (
-        <div className="bg-white dark:bg-[#262626] border border-neutral-200 dark:border-white/[0.08] rounded-xl p-6 space-y-4">
+        <div className="bg-[var(--surface)] dark:bg-[#1C1C20] border border-[var(--border)] dark:border-[#33333A] rounded-xl p-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-neutral-900 dark:text-[#ececec]">
+              <h2 className="text-sm font-semibold text-neutral-900 dark:text-[#F4F4F5]">
                 Antrean Impor Massal (PDF, Word, Excel)
               </h2>
-              <p className="text-xs text-neutral-600 dark:text-[#a0a0a0]">
+              <p className="text-xs text-neutral-600 dark:text-[#A1A1AA]">
                 Pilih banyak file sekaligus, jalankan ekstraksi antrean AI, lalu tinjau setiap hasil sebelum menyimpan.
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <label className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-neutral-800 dark:text-[#ececec] bg-neutral-100 dark:bg-[#2f2f2f] hover:bg-neutral-200 dark:hover:bg-[#3a3a3a] border border-neutral-200 dark:border-white/[0.08] rounded-lg cursor-pointer whitespace-nowrap shrink-0">
+              <label className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-neutral-800 dark:text-[#F4F4F5] bg-[var(--surface-3)] dark:bg-[#25252A] hover:bg-neutral-200 dark:hover:bg-[#2F2F36] border border-[var(--border)] dark:border-[#33333A] rounded-lg cursor-pointer whitespace-nowrap shrink-0">
                 <FileUp className="w-3.5 h-3.5" />
                 <span>Pilih Banyak File</span>
                 <input
@@ -1305,16 +1331,16 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
               aria-live="polite"
               className={`p-4 rounded-lg border space-y-2.5 text-xs ${
                 bulkProgress.phase === 'running'
-                  ? 'bg-neutral-100 dark:bg-[#2a2a2a] border-neutral-200 dark:border-white/[0.1] text-neutral-900 dark:text-[#ececec]'
+                  ? 'bg-[var(--surface-3)] dark:bg-[#25252A] border-[var(--border)] dark:border-[#33333A] text-neutral-900 dark:text-[#F4F4F5]'
                   : bulkProgress.phase === 'completed'
-                    ? 'bg-emerald-50 dark:bg-emerald-950/45 border-emerald-200 dark:border-emerald-800/70 text-emerald-950 dark:text-emerald-100'
-                    : 'bg-amber-50 dark:bg-amber-950/45 border-amber-200 dark:border-amber-800/70 text-amber-950 dark:text-amber-100'
+                    ? 'bg-[var(--success-soft)] dark:bg-emerald-950/45 border-emerald-200 dark:border-emerald-800/70 text-emerald-950 dark:text-emerald-100'
+                    : 'bg-[var(--warning-soft)] dark:bg-amber-950/45 border-amber-200 dark:border-amber-800/70 text-amber-950 dark:text-amber-100'
               }`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-2.5 min-w-0">
                   {bulkProgress.phase === 'running' ? (
-                    <Loader2 className="w-4 h-4 text-neutral-700 dark:text-[#ececec] animate-spin shrink-0 mt-0.5" />
+                    <Loader2 className="w-4 h-4 text-neutral-700 dark:text-[#F4F4F5] animate-spin shrink-0 mt-0.5" />
                   ) : bulkProgress.phase === 'completed' ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                   ) : (
@@ -1357,7 +1383,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                   )}
                 </div>
               </div>
-              <div className="w-full h-2 bg-white/80 dark:bg-[#171717] border border-black/10 dark:border-white/10 rounded-full overflow-hidden">
+              <div className="w-full h-2 bg-[var(--surface)]/80 dark:bg-[#131316] border border-black/10 dark:border-white/10 rounded-full overflow-hidden">
                 <div
                   className={`h-full transition-all duration-300 ${
                     bulkProgress.phase === 'running'
@@ -1382,39 +1408,39 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
           )}
 
           {bulkQueue.length === 0 ? (
-            <div className="p-8 border border-dashed border-neutral-200 dark:border-white/[0.12] rounded-lg text-center text-xs text-neutral-500 dark:text-[#8e8e8e]">
+            <div className="p-8 border border-dashed border-[var(--border)] dark:border-[#33333A] rounded-lg text-center text-xs text-neutral-500 dark:text-[#A1A1AA]">
               Belum ada file di antrean. Klik &ldquo;Pilih Banyak File&rdquo; untuk menambahkan dokumen.
             </div>
           ) : (
-            <div className="divide-y divide-neutral-200 dark:divide-white/[0.08] border border-neutral-200 dark:border-white/[0.08] rounded-lg">
+            <div className="divide-y divide-neutral-200 dark:divide-white/[0.08] border border-[var(--border)] dark:border-[#33333A] rounded-lg">
               {bulkQueue.map((item) => (
                 <div
                   key={item.id}
                   className={`p-3.5 flex items-center justify-between gap-4 text-xs ${
-                    item.status === 'Memproses AI' ? 'bg-neutral-100/80 dark:bg-[#2a2a2a]' : ''
+                    item.status === 'Memproses AI' ? 'bg-[var(--surface-3)]/80 dark:bg-[#25252A]' : ''
                   }`}
                 >
                   <div className="flex items-start gap-2.5 min-w-0">
                     {item.status === 'Memproses AI' ? (
-                      <Loader2 className="w-4 h-4 text-neutral-700 dark:text-[#ececec] animate-spin shrink-0 mt-0.5" />
+                      <Loader2 className="w-4 h-4 text-neutral-700 dark:text-[#F4F4F5] animate-spin shrink-0 mt-0.5" />
                     ) : item.status === 'Siap Ditinjau' || item.status === 'Tersimpan' ? (
                       <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                     ) : item.status === 'Gagal' ? (
                       <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
                     ) : null}
                     <div className="min-w-0">
-                      <p className="font-medium text-neutral-900 dark:text-[#ececec] truncate">{item.file.name}</p>
-                      <p className="text-neutral-500 dark:text-[#8e8e8e]">
+                      <p className="font-medium text-neutral-900 dark:text-[#F4F4F5] truncate">{item.file.name}</p>
+                      <p className="text-neutral-500 dark:text-[#A1A1AA]">
                         Status:{' '}
                         <strong
                           className={
                             item.status === 'Memproses AI'
-                              ? 'text-neutral-900 dark:text-[#ececec]'
+                              ? 'text-neutral-900 dark:text-[#F4F4F5]'
                               : item.status === 'Siap Ditinjau' || item.status === 'Tersimpan'
                                 ? 'text-emerald-700 dark:text-emerald-400'
                                 : item.status === 'Gagal'
                                   ? 'text-rose-700 dark:text-rose-400'
-                                  : 'text-neutral-800 dark:text-[#d4d4d4]'
+                                  : 'text-neutral-800 dark:text-[#F4F4F5]'
                           }
                         >
                           {item.status}
@@ -1433,7 +1459,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                       <button
                         type="button"
                         onClick={() => applyDraftToReview(item.draft!, item.attachment || null, item.id)}
-                        className="px-3 py-1.5 text-xs font-medium text-neutral-900 dark:text-[#ececec] bg-neutral-100 dark:bg-[#2f2f2f] hover:bg-neutral-200 dark:hover:bg-[#3a3a3a] border border-neutral-200 dark:border-white/[0.08] rounded-md whitespace-nowrap shrink-0 cursor-pointer"
+                        className="px-3 py-1.5 text-xs font-medium text-neutral-900 dark:text-[#F4F4F5] bg-[var(--surface-3)] dark:bg-[#25252A] hover:bg-neutral-200 dark:hover:bg-[#2F2F36] border border-[var(--border)] dark:border-[#33333A] rounded-md whitespace-nowrap shrink-0 cursor-pointer"
                       >
                         Tinjau & Simpan
                       </button>
@@ -1444,7 +1470,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                         onClick={() =>
                           setBulkQueue((prev) => prev.filter((q) => q.id !== item.id))
                         }
-                        className="p-1.5 text-neutral-400 dark:text-[#7a7a7a] hover:text-rose-600 dark:hover:text-rose-400 rounded cursor-pointer"
+                        className="p-1.5 text-neutral-400 dark:text-[#A1A1AA] hover:text-rose-600 dark:hover:text-rose-400 rounded cursor-pointer"
                         title="Hapus dari antrean"
                         aria-label="Hapus dari antrean"
                       >
@@ -1461,20 +1487,20 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
 
       {/* Human Review & Publish Panel */}
       {draft && (
-        <div className="bg-white dark:bg-[#262626] border border-neutral-300 dark:border-white/[0.12] rounded-xl p-6 space-y-5">
-          <div className="flex items-center justify-between gap-4 border-b border-neutral-200 dark:border-white/[0.08] pb-4">
+        <div className="bg-[var(--surface)] dark:bg-[#1C1C20] border border-[var(--border-strong)] dark:border-[#33333A] rounded-xl p-6 space-y-5">
+          <div className="flex items-center justify-between gap-4 border-b border-[var(--border)] dark:border-[#33333A] pb-4">
             <div>
-              <h2 className="font-display text-base font-semibold text-neutral-900 dark:text-[#ececec]">
+              <h2 className="font-display text-base font-semibold text-neutral-900 dark:text-[#F4F4F5]">
                 Pratinjau & Peninjauan Manusia Sebelum Simpan
               </h2>
-              <p className="text-xs text-neutral-600 dark:text-[#a0a0a0]">
+              <p className="text-xs text-neutral-600 dark:text-[#A1A1AA]">
                 Periksa atau sunting hasil ekstraksi AI sebelum menyimpannya ke Repositori SOP.
               </p>
             </div>
             <button
               type="button"
               onClick={() => setDraft(null)}
-              className="text-xs text-neutral-500 dark:text-[#8e8e8e] hover:text-neutral-900 dark:hover:text-[#ececec] cursor-pointer"
+              className="text-xs text-neutral-500 dark:text-[#A1A1AA] hover:text-neutral-900 dark:hover:text-[#F4F4F5] cursor-pointer"
             >
               Tutup Pratinjau
             </button>
@@ -1482,30 +1508,30 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">
+              <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">
                 Nomor Dokumen
               </label>
               <input
                 type="text"
                 value={draft.docNumber}
                 onChange={(e) => setDraft({ ...draft, docNumber: e.target.value })}
-                className="w-full px-3 py-2 text-sm font-mono bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] border border-neutral-200 dark:border-white/[0.12] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
+                className="w-full px-3 py-2 text-sm font-mono bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">Judul SOP</label>
+              <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">Judul SOP</label>
               <input
                 type="text"
                 value={draft.title}
                 onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-                className="w-full px-3 py-2 text-sm bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] border border-neutral-200 dark:border-white/[0.12] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
+                className="w-full px-3 py-2 text-sm bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">Divisi</label>
+              <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">Divisi</label>
               <select
                 value={targetDivisionId}
                 onChange={(e) => {
@@ -1514,7 +1540,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                   const firstDept = departments.find((d) => d.divisionId === id);
                   setTargetDeptId(firstDept?.id || '');
                 }}
-                className="w-full px-3 py-2 text-sm border border-neutral-200 dark:border-white/[0.12] rounded-lg bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
+                className="w-full px-3 py-2 text-sm border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
               >
                 {divisions.length === 0 ? (
                   <option value="">
@@ -1530,11 +1556,11 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">Departemen</label>
+              <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">Departemen</label>
               <select
                 value={targetDeptId}
                 onChange={(e) => setTargetDeptId(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-neutral-200 dark:border-white/[0.12] rounded-lg bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
+                className="w-full px-3 py-2 text-sm border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
               >
                 {filteredDepts.length === 0 ? (
                   <option value="">
@@ -1550,13 +1576,13 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">
+              <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">
                 Pemilik Proses (Owner)
               </label>
               <select
                 value={targetOwnerUid}
                 onChange={(e) => setTargetOwnerUid(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-neutral-200 dark:border-white/[0.12] rounded-lg bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
+                className="w-full px-3 py-2 text-sm border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
               >
                 <option value="">-- Belum ditetapkan --</option>
                 {directory.map((m) => (
@@ -1569,39 +1595,39 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
           </div>
 
           {(divisions.length === 0 || filteredDepts.length === 0) && (
-            <div className="p-3 bg-neutral-100 dark:bg-[#2a2a2a] border border-neutral-200 dark:border-white/[0.08] rounded-lg text-xs text-neutral-800 dark:text-[#d4d4d4]">
+            <div className="p-3 bg-[var(--surface-3)] dark:bg-[#25252A] border border-[var(--border)] dark:border-[#33333A] rounded-lg text-xs text-neutral-800 dark:text-[#F4F4F5]">
               {user.role === 'Super Admin' || user.role === 'Admin Divisi'
-                ? 'Struktur Divisi/Departemen pada pilihan ini belum terdaftar. Saat Anda menyimpan, SOP Brain akan membuatnya secara otomatis.'
+                ? 'Struktur Divisi/Departemen pada pilihan ini belum terdaftar. Saat Anda menyimpan, NARA AI akan membuatnya secara otomatis.'
                 : 'Divisi/Departemen belum tersedia. Hubungi Super Admin untuk menambahkan Divisi terlebih dahulu.'}
             </div>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">Tujuan</label>
+              <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">Tujuan</label>
               <textarea
                 rows={3}
                 value={draft.purpose}
                 onChange={(e) => setDraft({ ...draft, purpose: e.target.value })}
-                className="w-full px-3 py-2 text-sm bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] border border-neutral-200 dark:border-white/[0.12] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
+                className="w-full px-3 py-2 text-sm bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">
+              <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">
                 Ruang Lingkup
               </label>
               <textarea
                 rows={3}
                 value={draft.scope}
                 onChange={(e) => setDraft({ ...draft, scope: e.target.value })}
-                className="w-full px-3 py-2 text-sm bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] border border-neutral-200 dark:border-white/[0.12] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
+                className="w-full px-3 py-2 text-sm bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">
+              <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">
                 Peran Terkait (pisahkan koma)
               </label>
               <input
@@ -1609,40 +1635,40 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                 value={relatedRolesText}
                 onChange={(e) => setRelatedRolesText(e.target.value)}
                 placeholder="Pemohon, Atasan, Finance AP"
-                className="w-full px-3 py-2 text-sm bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] placeholder:text-neutral-400 dark:placeholder:text-[#7a7a7a] border border-neutral-200 dark:border-white/[0.12] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
+                className="w-full px-3 py-2 text-sm bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] placeholder:text-[var(--text-subtle)] dark:placeholder:text-[#6B7280] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">
+              <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">
                 Tanggal Berlaku
               </label>
               <input
                 type="date"
                 value={effectiveDate}
                 onChange={(e) => setEffectiveDate(e.target.value)}
-                className="w-full px-3 py-2 text-sm font-mono bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] border border-neutral-200 dark:border-white/[0.12] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
+                className="w-full px-3 py-2 text-sm font-mono bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-neutral-700 dark:text-[#c4c4c4] mb-1">
+              <label className="block text-xs font-medium text-neutral-700 dark:text-[#A1A1AA] mb-1">
                 Review Berikutnya
               </label>
               <input
                 type="date"
                 value={nextReviewDate}
                 onChange={(e) => setNextReviewDate(e.target.value)}
-                className="w-full px-3 py-2 text-sm font-mono bg-white dark:bg-[#1e1e1e] text-neutral-900 dark:text-[#ececec] border border-neutral-200 dark:border-white/[0.12] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
+                className="w-full px-3 py-2 text-sm font-mono bg-[var(--input-bg)] dark:bg-[#1C1C20] text-neutral-900 dark:text-[#F4F4F5] border border-[var(--border-strong)] dark:border-[#33333A] rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
               />
             </div>
           </div>
 
-          <div className="p-4 bg-neutral-50 dark:bg-[#2a2a2a] border border-neutral-200 dark:border-white/[0.08] rounded-lg space-y-3">
+          <div className="p-4 bg-[var(--surface-2)] dark:bg-[#25252A] border border-[var(--border)] dark:border-[#33333A] rounded-lg space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs font-semibold text-neutral-800 dark:text-[#d4d4d4]">
-                <Lock className="w-3.5 h-3.5 text-neutral-600 dark:text-[#a0a0a0]" />
+              <div className="flex items-center gap-2 text-xs font-semibold text-neutral-800 dark:text-[#F4F4F5]">
+                <Lock className="w-3.5 h-3.5 text-neutral-600 dark:text-[#A1A1AA]" />
                 <span>Level Hak Akses SOP</span>
               </div>
-              <div className="flex items-center gap-1 p-1 bg-neutral-100 dark:bg-[#171717] border border-neutral-200 dark:border-white/[0.08] rounded-lg">
+              <div className="flex items-center gap-1 p-1 bg-[var(--surface-3)] dark:bg-[#131316] border border-[var(--border)] dark:border-[#33333A] rounded-lg">
                 {(['Umum', 'Per Divisi', 'Rahasia'] as AccessLevel[]).map((lvl) => (
                   <button
                     key={lvl}
@@ -1650,8 +1676,8 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                     onClick={() => setTargetAccessLevel(lvl)}
                     className={`px-3 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                       targetAccessLevel === lvl
-                        ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 shadow-sm'
-                        : 'text-neutral-600 dark:text-[#a0a0a0] hover:text-neutral-900 dark:hover:text-[#ececec]'
+                        ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 dark:shadow-sm'
+                        : 'text-neutral-600 dark:text-[#A1A1AA] hover:text-neutral-900 dark:hover:text-[#F4F4F5]'
                     }`}
                   >
                     {lvl}
@@ -1666,7 +1692,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                   return (
                     <label
                       key={m.uid}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-white dark:bg-[#1e1e1e] text-neutral-800 dark:text-[#e0e0e0] border border-neutral-200 dark:border-white/[0.12] rounded-md cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-[var(--surface)] dark:bg-[#1C1C20] text-neutral-800 dark:text-[#F4F4F5] border border-[var(--border)] dark:border-[#33333A] rounded-md cursor-pointer"
                     >
                       <input
                         type="checkbox"
@@ -1689,7 +1715,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold text-neutral-800 dark:text-[#d4d4d4]">
+              <h3 className="text-xs font-semibold text-neutral-800 dark:text-[#F4F4F5]">
                 Bagian & Langkah Prosedur ({draft.sections.length} bagian)
               </h3>
               <button
@@ -1706,14 +1732,14 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                     ],
                   })
                 }
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-neutral-800 dark:text-[#ececec] bg-neutral-100 dark:bg-[#2f2f2f] hover:bg-neutral-200 dark:hover:bg-[#3a3a3a] border border-neutral-200 dark:border-white/[0.08] rounded-md cursor-pointer"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-neutral-800 dark:text-[#F4F4F5] bg-[var(--surface-3)] dark:bg-[#25252A] hover:bg-neutral-200 dark:hover:bg-[#2F2F36] border border-[var(--border)] dark:border-[#33333A] rounded-md cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Tambah Bagian</span>
               </button>
             </div>
             {draft.sections.map((sec, idx) => (
-              <div key={idx} className="p-3.5 border border-neutral-200 dark:border-white/[0.08] bg-neutral-50/70 dark:bg-[#1e1e1e] rounded-lg space-y-2">
+              <div key={idx} className="p-3.5 border border-[var(--border)] dark:border-[#33333A] bg-[var(--surface-2)]/70 dark:bg-[#1C1C20] rounded-lg space-y-2">
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
@@ -1726,7 +1752,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                         ),
                       })
                     }
-                    className="flex-1 px-2.5 py-1.5 text-sm font-medium bg-white dark:bg-[#171717] text-neutral-900 dark:text-[#ececec] border border-neutral-200 dark:border-white/[0.12] rounded-md focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
+                    className="flex-1 px-2.5 py-1.5 text-sm font-medium bg-[var(--surface)] dark:bg-[#131316] text-neutral-900 dark:text-[#F4F4F5] border border-[var(--border)] dark:border-[#33333A] rounded-md focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
                   />
                   {draft.sections.length > 1 && (
                     <button
@@ -1737,7 +1763,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                           sections: draft.sections.filter((_, i) => i !== idx),
                         })
                       }
-                      className="p-1.5 text-neutral-400 dark:text-[#7a7a7a] hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
+                      className="p-1.5 text-neutral-400 dark:text-[#A1A1AA] hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer"
                       aria-label="Hapus bagian"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -1755,22 +1781,22 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                       ),
                     })
                   }
-                  className="w-full px-2.5 py-1.5 text-sm bg-white dark:bg-[#171717] text-neutral-900 dark:text-[#ececec] border border-neutral-200 dark:border-white/[0.12] rounded-md focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
+                  className="w-full px-2.5 py-1.5 text-sm bg-[var(--surface)] dark:bg-[#131316] text-neutral-900 dark:text-[#F4F4F5] border border-[var(--border)] dark:border-[#33333A] rounded-md focus:outline-none focus:ring-2 focus:ring-neutral-900/15 dark:focus:ring-white/20"
                 />
               </div>
             ))}
           </div>
 
           {draftAttachment?.visualPages && draftAttachment.visualPages.length > 0 && (
-            <div className="space-y-2.5 pt-2 border-t border-neutral-200 dark:border-white/[0.08]">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-neutral-800 dark:text-[#d4d4d4]">
-                <ImageIcon className="w-3.5 h-3.5 text-neutral-600 dark:text-[#a0a0a0]" />
+            <div className="space-y-2.5 pt-2 border-t border-[var(--border)] dark:border-[#33333A]">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-neutral-800 dark:text-[#F4F4F5]">
+                <ImageIcon className="w-3.5 h-3.5 text-neutral-600 dark:text-[#A1A1AA]" />
                 <span>
                   Gambar Utama &amp; Cuplikan Visual PDF yang Diekstrak ({draftAttachment.visualPages.length}{' '}
                   gambar)
                 </span>
               </div>
-              <p className="text-[11px] text-neutral-500 dark:text-[#8e8e8e]">
+              <p className="text-[11px] text-neutral-500 dark:text-[#A1A1AA]">
                 Potongan gambar utama ini akan ikut disimpan pada SOP dan dapat ditampilkan otomatis saat karyawan bertanya ke AI.
               </p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -1781,16 +1807,16 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                     onClick={() =>
                       setPreviewZoomImage({ url: vp.dataUrl, caption: vp.caption })
                     }
-                    className="group text-left bg-neutral-50 dark:bg-[#2a2a2a] border border-neutral-200 dark:border-white/[0.08] hover:border-neutral-400 dark:hover:border-white/25 rounded-lg overflow-hidden transition-colors cursor-pointer"
+                    className="group text-left bg-[var(--surface-2)] dark:bg-[#25252A] border border-[var(--border)] dark:border-[#33333A] hover:border-neutral-400 dark:hover:border-white/25 rounded-lg overflow-hidden transition-colors cursor-pointer"
                   >
-                    <div className="aspect-[4/3] bg-white overflow-hidden border-b border-neutral-200 dark:border-white/[0.08]">
+                    <div className="aspect-[4/3] bg-[var(--surface)] overflow-hidden border-b border-[var(--border)] dark:border-[#33333A]">
                       <img
                         src={vp.dataUrl}
                         alt={vp.caption}
                         className="w-full h-full object-contain group-hover:scale-[1.02] transition-transform"
                       />
                     </div>
-                    <p className="p-2 text-[11px] text-neutral-700 dark:text-[#c4c4c4] line-clamp-2">{vp.caption}</p>
+                    <p className="p-2 text-[11px] text-neutral-700 dark:text-[#A1A1AA] line-clamp-2">{vp.caption}</p>
                   </button>
                 ))}
               </div>
@@ -1801,8 +1827,8 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
             <div
               className={`p-4 rounded-xl border space-y-3 ${
                 conflictReport.hasIssues
-                  ? 'bg-amber-50/90 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800/80'
-                  : 'bg-emerald-50/90 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/70'
+                  ? 'bg-[var(--warning-soft)] dark:bg-amber-950/40 border-amber-300 dark:border-amber-800/80'
+                  : 'bg-[var(--success-soft)] dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/70'
               }`}
             >
               <div className="flex items-start justify-between gap-3">
@@ -1813,12 +1839,12 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                   )}
                   <div className="min-w-0">
-                    <h4 className="text-xs font-bold text-neutral-900 dark:text-[#ececec]">
+                    <h4 className="text-xs font-bold text-neutral-900 dark:text-[#F4F4F5]">
                       {conflictReport.hasIssues
                         ? `Guardrail Konflik Pra-Publikasi (${conflictReport.conflicts.length} temuan)`
                         : 'Aman — Tidak Ada Konflik Terdeteksi'}
                     </h4>
-                    <p className="text-xs text-neutral-700 dark:text-[#c4c4c4] mt-0.5">
+                    <p className="text-xs text-neutral-700 dark:text-[#A1A1AA] mt-0.5">
                       {conflictReport.summary}
                     </p>
                   </div>
@@ -1829,7 +1855,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                     setConflictReport(null);
                     setPendingConflictStatus(null);
                   }}
-                  className="p-1 text-neutral-500 dark:text-[#8e8e8e] hover:text-neutral-900 dark:hover:text-[#ececec] cursor-pointer"
+                  className="p-1 text-neutral-500 dark:text-[#A1A1AA] hover:text-neutral-900 dark:hover:text-[#F4F4F5] cursor-pointer"
                   aria-label="Tutup laporan guardrail"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -1841,17 +1867,17 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                   {conflictReport.conflicts.map((item, cIdx) => (
                     <div
                       key={`${item.existingSopId}-${cIdx}`}
-                      className="p-2.5 bg-white dark:bg-[#212121] border border-amber-200 dark:border-amber-800/60 rounded-lg text-xs space-y-1"
+                      className="p-2.5 bg-[var(--surface)] dark:bg-[#131316] border border-amber-200 dark:border-amber-800/60 rounded-lg text-xs space-y-1"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-semibold text-neutral-900 dark:text-[#ececec]">
-                          <span className="font-mono text-neutral-700 dark:text-[#d4d4d4]">
+                        <span className="font-semibold text-neutral-900 dark:text-[#F4F4F5]">
+                          <span className="font-mono text-neutral-700 dark:text-[#F4F4F5]">
                             {item.existingDocNumber}
                           </span>{' '}
                           — {item.existingTitle}
                         </span>
                         <div className="flex items-center gap-1.5">
-                          <span className="px-2 py-0.5 text-[10px] font-semibold bg-neutral-100 dark:bg-[#2f2f2f] text-neutral-700 dark:text-[#d4d4d4] rounded">
+                          <span className="px-2 py-0.5 text-[10px] font-semibold bg-[var(--surface-3)] dark:bg-[#25252A] text-neutral-700 dark:text-[#F4F4F5] rounded">
                             {item.conflictType}
                           </span>
                           <span
@@ -1860,15 +1886,15 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                                 ? 'bg-rose-100 dark:bg-rose-950/70 text-rose-800 dark:text-rose-300'
                                 : item.severity === 'Sedang'
                                   ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300'
-                                  : 'bg-neutral-100 dark:bg-[#2f2f2f] text-neutral-700 dark:text-[#d4d4d4]'
+                                  : 'bg-[var(--surface-3)] dark:bg-[#25252A] text-neutral-700 dark:text-[#F4F4F5]'
                             }`}
                           >
                             {item.severity}
                           </span>
                         </div>
                       </div>
-                      <p className="text-neutral-700 dark:text-[#c4c4c4]">{item.description}</p>
-                      <p className="text-neutral-900 dark:text-[#ececec] font-medium">
+                      <p className="text-neutral-700 dark:text-[#A1A1AA]">{item.description}</p>
+                      <p className="text-neutral-900 dark:text-[#F4F4F5] font-medium">
                         Saran: {item.recommendation}
                       </p>
                     </div>
@@ -1884,7 +1910,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
                       setConflictReport(null);
                       setPendingConflictStatus(null);
                     }}
-                    className="px-3 py-1.5 text-xs font-medium text-neutral-800 dark:text-[#ececec] bg-white dark:bg-[#2f2f2f] border border-neutral-200 dark:border-white/[0.1] rounded-lg hover:bg-neutral-100 dark:hover:bg-[#3a3a3a] cursor-pointer"
+                    className="px-3 py-1.5 text-xs font-medium text-neutral-800 dark:text-[#F4F4F5] bg-[var(--surface)] dark:bg-[#25252A] border border-[var(--border)] dark:border-[#33333A] rounded-lg hover:bg-[var(--surface-2)] dark:hover:bg-[#2F2F36] cursor-pointer"
                   >
                     Perbaiki Draft
                   </button>
@@ -1901,13 +1927,13 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
             </div>
           )}
 
-          <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-neutral-200 dark:border-white/[0.08]">
+          <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-[var(--border)] dark:border-[#33333A]">
             {hasApprovedSops && (
               <button
                 type="button"
                 disabled={savingDraft || checkingConflicts}
                 onClick={handleManualConflictCheck}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-neutral-800 dark:text-[#ececec] bg-neutral-100 dark:bg-[#2f2f2f] border border-neutral-200 dark:border-white/[0.08] rounded-lg hover:bg-neutral-200 dark:hover:bg-[#3a3a3a] disabled:opacity-60 cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-neutral-800 dark:text-[#F4F4F5] bg-[var(--surface-3)] dark:bg-[#25252A] border border-[var(--border)] dark:border-[#33333A] rounded-lg hover:bg-neutral-200 dark:hover:bg-[#2F2F36] disabled:opacity-60 cursor-pointer"
               >
                 {checkingConflicts ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1921,7 +1947,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
               type="button"
               disabled={savingDraft || checkingConflicts}
               onClick={() => handleSaveReviewedDraft('Draft')}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-neutral-800 dark:text-[#ececec] bg-white dark:bg-[#2f2f2f] border border-neutral-200 dark:border-white/[0.1] rounded-lg hover:bg-neutral-100 dark:hover:bg-[#3a3a3a] cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-neutral-800 dark:text-[#F4F4F5] bg-[var(--surface)] dark:bg-[#25252A] border border-[var(--border)] dark:border-[#33333A] rounded-lg hover:bg-[var(--surface-2)] dark:hover:bg-[#2F2F36] cursor-pointer"
             >
               <Save className="w-3.5 h-3.5" />
               <span>Simpan Draft</span>
@@ -1930,7 +1956,7 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
               type="button"
               disabled={savingDraft || checkingConflicts}
               onClick={() => handleSaveReviewedDraft('Review')}
-              className="px-3.5 py-2 text-xs font-medium text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/70 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/60 cursor-pointer"
+              className="px-3.5 py-2 text-xs font-medium text-amber-800 dark:text-amber-200 bg-[var(--warning-soft)] dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/70 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/60 cursor-pointer"
             >
               Ajukan Review
             </button>
@@ -1958,30 +1984,30 @@ export const AiStudioView: React.FC<AiStudioViewProps> = ({
       {previewZoomImage && (
         <div
           onClick={() => setPreviewZoomImage(null)}
-          className="fixed inset-0 z-50 bg-black/75 dark:bg-black/85 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-[var(--overlay-bg)] dark:bg-black/85 flex items-center justify-center p-4"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white dark:bg-[#212121] rounded-xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-neutral-200 dark:border-white/[0.1]"
+            className="bg-[var(--surface)] dark:bg-[#131316] rounded-xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-[var(--border)] dark:border-[#33333A]"
           >
-            <div className="px-4 py-3 border-b border-neutral-200 dark:border-white/[0.08] flex items-center justify-between gap-3 bg-[#f9f9f9] dark:bg-[#171717]">
-              <p className="text-xs font-medium text-neutral-800 dark:text-[#ececec] truncate">
+            <div className="px-4 py-3 border-b border-[var(--border)] dark:border-[#33333A] flex items-center justify-between gap-3 bg-[#f9f9f9] dark:bg-[#131316]">
+              <p className="text-xs font-medium text-neutral-800 dark:text-[#F4F4F5] truncate">
                 {previewZoomImage.caption}
               </p>
               <button
                 type="button"
                 onClick={() => setPreviewZoomImage(null)}
-                className="p-1.5 text-neutral-500 dark:text-[#a0a0a0] hover:text-neutral-900 dark:hover:text-[#ececec] rounded-md hover:bg-neutral-200/70 dark:hover:bg-[#2a2a2a] cursor-pointer"
+                className="p-1.5 text-neutral-500 dark:text-[#A1A1AA] hover:text-neutral-900 dark:hover:text-[#F4F4F5] rounded-md hover:bg-neutral-200/70 dark:hover:bg-[#2F2F36] cursor-pointer"
                 aria-label="Tutup pratinjau gambar"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="flex-1 overflow-auto p-4 bg-neutral-100 dark:bg-[#171717] flex items-center justify-center">
+            <div className="flex-1 overflow-auto p-4 bg-[var(--surface-3)] dark:bg-[#131316] flex items-center justify-center">
               <img
                 src={previewZoomImage.url}
                 alt={previewZoomImage.caption}
-                className="max-w-full max-h-[76vh] object-contain rounded shadow-sm bg-white"
+                className="max-w-full max-h-[76vh] object-contain rounded dark:shadow-sm bg-[var(--surface)]"
               />
             </div>
           </div>

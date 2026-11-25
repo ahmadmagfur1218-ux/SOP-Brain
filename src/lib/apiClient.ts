@@ -1,15 +1,88 @@
+import { getRbacToken } from './rbacClient';
+
+export interface FetchApiJsonOptions {
+  onWarmup?: (message: string) => void;
+}
+
+function withRbacAuthHeaders(init: RequestInit): RequestInit {
+  const rbacToken = getRbacToken();
+  if (!rbacToken) return init;
+  const headers = new Headers(init.headers);
+  if (!headers.has('X-Rbac-Token')) {
+    headers.set('X-Rbac-Token', rbacToken);
+  }
+  const existingAuth = headers.get('Authorization') || '';
+  if (!existingAuth || existingAuth === 'Bearer ' || existingAuth === 'Bearer null' || existingAuth === 'Bearer undefined') {
+    headers.set('Authorization', `Bearer ${rbacToken}`);
+  }
+  return { ...init, headers };
+}
+
+let activeHealthWaitPromise: Promise<boolean> | null = null;
+
+/**
+ * Polls /api/health until the Express backend responds with valid JSON
+ * (handling AI Studio / Cloud Run cold-start "Starting Server..." HTML interstitials).
+ */
+export async function waitForBackendReady(
+  maxWaitMs = 32_000,
+  signal?: AbortSignal | null
+): Promise<boolean> {
+  if (activeHealthWaitPromise) {
+    return activeHealthWaitPromise;
+  }
+
+  const run = async (): Promise<boolean> => {
+    const deadline = Date.now() + maxWaitMs;
+    let attempt = 0;
+    while (Date.now() < deadline) {
+      if (signal?.aborted) return false;
+      try {
+        const res = await fetch(`/api/health?_t=${Date.now()}`, {
+          method: 'GET',
+          cache: 'no-store',
+          signal: signal ?? undefined,
+        });
+        const ct = (res.headers.get('content-type') || '').toLowerCase();
+        if (res.ok && ct.includes('application/json')) {
+          const text = await res.text();
+          if (text.trim().startsWith('{')) {
+            return true;
+          }
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return false;
+        }
+      }
+      attempt += 1;
+      const delay = Math.min(2500, 900 + attempt * 350);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+    return false;
+  };
+
+  activeHealthWaitPromise = run().finally(() => {
+    activeHealthWaitPromise = null;
+  });
+  return activeHealthWaitPromise;
+}
+
 export async function fetchApiJson<T>(
   url: string,
   init: RequestInit,
-  fallbackError = 'Terjadi kesalahan saat menghubungi server.'
+  fallbackError = 'Terjadi kesalahan saat menghubungi server.',
+  options?: FetchApiJsonOptions
 ): Promise<T> {
-  const maxAttempts = 4;
-  const retryDelaysMs = [1000, 1800, 3000];
+  const maxAttempts = 5;
+  const retryDelaysMs = [1000, 1800, 2500, 3000];
+  let waitedForBoot = false;
+  const authedInit = withRbacAuthHeaders(init);
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     let resp: Response;
     try {
-      resp = await fetch(url, init);
+      resp = await fetch(url, authedInit);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         throw err;
@@ -34,22 +107,45 @@ export async function fetchApiJson<T>(
     const contentType = (resp.headers.get('content-type') || '').toLowerCase();
     const rawText = await resp.text();
     const trimmed = rawText.trim();
+    const lowerTrimmed = trimmed.toLowerCase();
     const looksLikeHtml =
       contentType.includes('text/html') ||
-      trimmed.toLowerCase().startsWith('<!doctype') ||
-      trimmed.toLowerCase().startsWith('<html');
+      lowerTrimmed.startsWith('<!doctype') ||
+      lowerTrimmed.startsWith('<html');
 
+    const isStartingServerPage =
+      looksLikeHtml && /starting\s+server|warming\s+up|please\s+wait/i.test(trimmed);
+
+    const isJsonPayload = trimmed.startsWith('{') || trimmed.startsWith('[');
     const isTransientWarmup =
-      looksLikeHtml || resp.status === 502 || resp.status === 503 || resp.status === 504;
+      looksLikeHtml ||
+      ((resp.status === 502 || resp.status === 503 || resp.status === 504) && !isJsonPayload);
 
     if (isTransientWarmup && attempt < maxAttempts - 1) {
+      if ((isStartingServerPage || !waitedForBoot) && !init.signal?.aborted) {
+        waitedForBoot = true;
+        options?.onWarmup?.(
+          'Server aplikasi sedang memulai ulang (Starting Server...), menunggu otomatis sampai siap...'
+        );
+        const ready = await waitForBackendReady(32_000, init.signal);
+        if (ready) {
+          continue;
+        }
+      }
       await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt] ?? 2500));
       continue;
     }
 
     if (looksLikeHtml) {
+      const titleMatch = trimmed.match(/<title[^>]*>([^<]{1,80})<\/title>/i);
+      const htmlTitle = titleMatch ? ` — "${titleMatch[1].trim()}"` : '';
+      if (isStartingServerPage) {
+        throw new Error(
+          `Server backend aplikasi masih dalam proses booting (${htmlTitle.replace(/^ — /, '') || 'Starting Server...'}). Ini bukan masalah Bridge MySQL — tunggu beberapa detik lalu klik "Coba Muat Ulang".`
+        );
+      }
       throw new Error(
-        'Server backend sedang memulai ulang atau mengembalikan halaman HTML, bukan JSON. Tunggu beberapa detik lalu coba lagi.'
+        `Server API (${url.split('?')[0]}) mengembalikan HTML (HTTP ${resp.status}${htmlTitle}), bukan JSON. Pastikan halaman sudah di-refresh (Ctrl+F5) atau tunggu beberapa detik jika server baru saja dimulai ulang.`
       );
     }
 
@@ -87,17 +183,24 @@ export async function streamApiSse<TDone>(
   init: RequestInit,
   options: {
     onDelta: (textChunk: string) => void;
+    onStatus?: (statusText: string) => void;
     fallbackError?: string;
   }
 ): Promise<TDone> {
-  const { onDelta, fallbackError = 'Terjadi kesalahan saat menerima aliran jawaban AI.' } = options;
-  const maxAttempts = 3;
-  const retryDelaysMs = [900, 1800];
+  const {
+    onDelta,
+    onStatus,
+    fallbackError = 'Terjadi kesalahan saat menerima aliran jawaban AI.',
+  } = options;
+  const maxAttempts = 4;
+  const retryDelaysMs = [1000, 1800, 2500];
+  let waitedForBoot = false;
+  const authedInit = withRbacAuthHeaders(init);
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     let resp: Response;
     try {
-      resp = await fetch(url, init);
+      resp = await fetch(url, authedInit);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         throw err;
@@ -127,6 +230,11 @@ export async function streamApiSse<TDone>(
       resp.status === 504;
 
     if (isTransient && attempt < maxAttempts - 1) {
+      if (!waitedForBoot && !init.signal?.aborted) {
+        waitedForBoot = true;
+        const ready = await waitForBackendReady(30_000, init.signal);
+        if (ready) continue;
+      }
       await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt] ?? 1500));
       continue;
     }
@@ -168,6 +276,8 @@ export async function streamApiSse<TDone>(
         };
         if (evt.type === 'delta' && typeof evt.text === 'string') {
           onDelta(evt.text);
+        } else if (evt.type === 'status' && typeof evt.text === 'string') {
+          onStatus?.(evt.text);
         } else if (evt.type === 'done' && evt.result !== undefined) {
           donePayload = evt.result;
         } else if (evt.type === 'error') {
