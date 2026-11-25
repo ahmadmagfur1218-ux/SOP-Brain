@@ -134,6 +134,48 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isGeminiModelNotFoundError(err: unknown): boolean {
+  const raw = err instanceof Error ? err.message : String(err || '');
+  const upper = raw.toUpperCase();
+  const status =
+    typeof err === 'object' && err !== null && 'status' in err
+      ? Number((err as { status?: unknown }).status)
+      : undefined;
+  return status === 404 || (upper.includes('NOT_FOUND') && upper.includes('MODEL'));
+}
+
+interface QaModelAttempt {
+  model: string;
+  level?: ThinkingLevel;
+  delayMs: number;
+}
+
+function buildQaModelAttempts(): QaModelAttempt[] {
+  const customModel = (process.env.GEMINI_QA_MODEL || '').trim().replace(/^["']+|["']+$/g, '').trim();
+  const attempts: QaModelAttempt[] = [];
+  if (customModel) {
+    const supportsThinkingLevel =
+      customModel.startsWith('gemini-3') || customModel.startsWith('gemini-4');
+    attempts.push({
+      model: customModel,
+      level: supportsThinkingLevel
+        ? customModel.includes('lite')
+          ? ThinkingLevel.MINIMAL
+          : ThinkingLevel.LOW
+        : undefined,
+      delayMs: 0,
+    });
+  }
+  const baseSchedule: QaModelAttempt[] = [
+    { model: 'gemini-4-hydrogen', level: ThinkingLevel.LOW, delayMs: attempts.length ? 700 : 0 },
+    { model: 'gemini-3.1-flash-lite', level: ThinkingLevel.MINIMAL, delayMs: 700 },
+    { model: 'gemini-4-hydrogen', level: ThinkingLevel.LOW, delayMs: 1600 },
+    { model: 'gemini-3.1-flash-lite', level: ThinkingLevel.MINIMAL, delayMs: 2800 },
+    { model: 'gemini-4-hydrogen', level: ThinkingLevel.LOW, delayMs: 4200 },
+  ];
+  return [...attempts, ...baseSchedule];
+}
+
 function unwrapNestedJsonErrorMessage(raw: string): string {
   let current = raw.trim();
   for (let depth = 0; depth < 3; depth++) {
@@ -1249,18 +1291,15 @@ export async function generateGroundedSopAnswer(params: {
   });
 
   const ai = getAiClient();
-  const qaAttempts: Array<{ model: string; level: ThinkingLevel; delayMs: number }> = [
-    { model: 'gemini-3.1-flash-lite', level: ThinkingLevel.MINIMAL, delayMs: 0 },
-    { model: 'gemini-4-hydrogen', level: ThinkingLevel.LOW, delayMs: 250 },
-    { model: 'gemini-3.1-flash-lite', level: ThinkingLevel.MINIMAL, delayMs: 900 },
-  ];
+  const qaAttempts = buildQaModelAttempts();
 
   let response: Awaited<ReturnType<typeof ai.models.generateContent>> | null = null;
   let lastQaErr: unknown = null;
   for (let i = 0; i < qaAttempts.length; i++) {
     const attempt = qaAttempts[i];
     if (attempt.delayMs > 0) {
-      await sleep(attempt.delayMs);
+      const jitterMs = Math.floor(Math.random() * 250);
+      await sleep(attempt.delayMs + jitterMs);
     }
     try {
       response = await ai.models.generateContent({
@@ -1268,7 +1307,7 @@ export async function generateGroundedSopAnswer(params: {
         contents: prompt,
         config: {
           systemInstruction: RAG_BASE_SYSTEM_RULES,
-          thinkingConfig: { thinkingLevel: attempt.level },
+          ...(attempt.level ? { thinkingConfig: { thinkingLevel: attempt.level } } : {}),
           responseMimeType: 'application/json',
           responseSchema: {
             type: Type.OBJECT,
@@ -1347,11 +1386,12 @@ export async function generateGroundedSopAnswer(params: {
     } catch (err) {
       lastQaErr = err;
       const isLast = i === qaAttempts.length - 1;
-      if (isLast || isGeminiAuthError(err) || !isGeminiTransientError(err)) {
+      const retryable = isGeminiTransientError(err) || isGeminiModelNotFoundError(err);
+      if (isLast || isGeminiAuthError(err) || !retryable) {
         throw err;
       }
       console.warn(
-        `Q&A model ${attempt.model} failed transiently (attempt ${i + 1}/${qaAttempts.length}), retrying...`,
+        `Q&A model ${attempt.model} failed (attempt ${i + 1}/${qaAttempts.length}), retrying with fallback:`,
         err
       );
     }
@@ -1466,7 +1506,7 @@ Pastikan JSON di dalam blok ${STREAM_META_START} valid dalam satu baris. Set "is
     onDelta(chunk);
   };
 
-  const runModelStream = async (model: string, thinkingLevel: ThinkingLevel) => {
+  const runModelStream = async (model: string, thinkingLevel?: ThinkingLevel) => {
     let fullRaw = '';
     let emittedLen = 0;
 
@@ -1475,7 +1515,7 @@ Pastikan JSON di dalam blok ${STREAM_META_START} valid dalam satu baris. Set "is
       contents: prompt,
       config: {
         systemInstruction: streamInstruction,
-        thinkingConfig: { thinkingLevel },
+        ...(thinkingLevel ? { thinkingConfig: { thinkingLevel } } : {}),
       },
     });
 
@@ -1596,24 +1636,22 @@ Pastikan JSON di dalam blok ${STREAM_META_START} valid dalam satu baris. Set "is
     );
   };
 
-  const streamAttempts: Array<{ model: string; level: ThinkingLevel; delayMs: number }> = [
-    { model: 'gemini-3.1-flash-lite', level: ThinkingLevel.MINIMAL, delayMs: 0 },
-    { model: 'gemini-4-hydrogen', level: ThinkingLevel.LOW, delayMs: 250 },
-    { model: 'gemini-3.1-flash-lite', level: ThinkingLevel.MINIMAL, delayMs: 900 },
-  ];
+  const streamAttempts = buildQaModelAttempts();
 
   let lastStreamErr: unknown = null;
   for (let i = 0; i < streamAttempts.length; i++) {
     const attempt = streamAttempts[i];
     if (attempt.delayMs > 0) {
-      await sleep(attempt.delayMs);
+      const jitterMs = Math.floor(Math.random() * 250);
+      await sleep(attempt.delayMs + jitterMs);
     }
     try {
       return await runModelStream(attempt.model, attempt.level);
     } catch (err) {
       lastStreamErr = err;
       const isLast = i === streamAttempts.length - 1;
-      if (isLast || emittedAny || isGeminiAuthError(err)) {
+      const retryable = isGeminiTransientError(err) || isGeminiModelNotFoundError(err);
+      if (isLast || emittedAny || isGeminiAuthError(err) || !retryable) {
         throw err;
       }
       console.warn(
